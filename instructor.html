@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/firebase/firebase-app-compat.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase/firebase-firestore-compat.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-storage-compat.js" defer></script>
 <style>
   :root {
     --bg: #f7f6f3;
@@ -73,13 +74,18 @@
   .error-msg { color: var(--warn); font-size: 0.88rem; margin-top: 0.75rem; text-align: center; }
 
   /* ── INSTRUCTOR APP ── */
-  #app-screen { display: none; }
+  #app-screen {
+    display: none;
+    flex-direction: column;
+    min-height: 100vh;
+  }
 
   .top-bar {
     background: white; border-bottom: 1px solid var(--border);
     padding: 0 1.5rem; height: 56px;
     display: flex; align-items: center; justify-content: space-between;
     position: sticky; top: 0; z-index: 100;
+    flex-shrink: 0;
   }
   .top-bar-left { display: flex; align-items: center; gap: 10px; }
   .top-bar-logo { width: 28px; height: 28px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
@@ -97,14 +103,89 @@
   .top-btn { font-size: 0.85rem; color: var(--text-muted); background: none; border: 1px solid var(--border); padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
   .top-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  .app-body { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 56px); }
-  @media(max-width:900px){ .app-body { grid-template-columns: 1fr; } }
+  .app-body {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .app-body > * { min-width: 0; }
 
-  /* Sidebar */
+  /* Sidebar — sticky only on wide layouts; on phones it caused questions to slide under the sidebar */
   .side-panel {
     background: white; border-right: 1px solid var(--border);
     padding: 0; overflow-y: auto; max-height: calc(100vh - 56px); position: sticky; top: 56px;
+    align-self: start;
   }
+
+  @media (max-width: 900px) {
+    .app-body {
+      grid-template-columns: 1fr;
+    }
+    .side-panel {
+      position: relative;
+      top: auto;
+      max-height: none;
+      overflow: visible;
+      align-self: stretch;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      order: 2;
+    }
+    .main-panel {
+      order: -1;
+      overflow-y: visible;
+      overflow-x: hidden;
+      padding: 1rem;
+    }
+    .top-bar {
+      height: auto;
+      min-height: 56px;
+      flex-wrap: wrap;
+      row-gap: 0.5rem;
+      padding: 0.5rem 1rem;
+    }
+    .top-bar-left,
+    .top-bar-right {
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .top-bar-right {
+      justify-content: flex-end;
+    }
+    .code-badge {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .panel-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .panel-header .sort-row {
+      margin-left: 0;
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .q-top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .form-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .top-bar-right {
+      width: 100%;
+      justify-content: flex-start;
+    }
+  }
+
   .side-section { border-bottom: 1px solid var(--border); }
   .side-section-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -178,8 +259,13 @@
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
   /* Main panel */
-  .main-panel { padding: 1.5rem; overflow-y: auto; }
-  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+  .main-panel {
+    padding: 1.5rem;
+    overflow-y: auto;
+    min-width: 0;
+    background: var(--surface);
+  }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
   .panel-title { font-size: 1rem; font-weight: 600; }
   .sort-row { display: flex; gap: 0.5rem; }
   .sort-btn {
@@ -193,6 +279,8 @@
   .q-card {
     background: white; border: 1px solid var(--border); border-radius: var(--radius);
     padding: 1.1rem 1.25rem; margin-bottom: 0.75rem; transition: box-shadow 0.15s;
+    position: relative;
+    overflow-x: hidden;
   }
   .q-card:hover { box-shadow: var(--shadow); }
   .q-card.pinned { border-left: 3px solid var(--pin); }
@@ -202,7 +290,76 @@
   .q-author-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .q-author { font-size: 0.82rem; font-weight: 500; }
   .q-email { font-size: 0.78rem; color: var(--text-light); font-family: 'DM Mono', monospace; }
-  .q-time { font-size: 0.78rem; color: var(--text-light); }
+  .q-time { font-size: 0.78rem; color: var(--text-light); white-space: nowrap; }
+  .page-nav-btn {
+    padding: 0.45rem 1.1rem; border: 1.5px solid var(--border); border-radius: 999px;
+    background: white; font-family: inherit; font-size: 0.85rem; color: var(--text-muted); cursor: pointer;
+  }
+  .page-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .page-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .q-pagination-num-wrap {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0.6rem 0.75rem;
+    margin: 0 0 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+  }
+  .q-pagination-num-wrap.visible { display: flex; }
+  .pagination-nav-cluster {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .pagination-page-btn {
+    min-width: 2rem;
+    padding: 0.32rem 0.5rem;
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: white;
+    font-family: inherit;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .pagination-page-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pagination-page-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pagination-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .questions-search-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0 0 0.75rem;
+  }
+  .questions-search-input {
+    flex: 1;
+    min-width: 10rem;
+    padding: 0.45rem 0.65rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: var(--surface2);
+    color: var(--text);
+    outline: none;
+  }
+  .questions-search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+    background: white;
+  }
+  .q-text-muted { font-size: 0.88rem; color: var(--text-muted); font-style: italic; }
   .q-votes { display: flex; align-items: center; gap: 4px; font-size: 0.82rem; color: var(--text-muted); }
   .q-badge { font-size: 0.72rem; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
   .badge-answered { background: var(--success-light); color: var(--success); }
@@ -210,6 +367,37 @@
   .badge-pinned { background: var(--pin-light); color: var(--pin); }
 
   .q-text { font-size: 0.95rem; line-height: 1.55; margin-bottom: 0.75rem; }
+  .rich-message strong { font-weight: 600; }
+  .rich-message em { font-style: italic; }
+  .rich-message del { text-decoration: line-through; opacity: 0.9; }
+  .rich-message .rich-code {
+    font-family: 'DM Mono', ui-monospace, monospace;
+    font-size: 0.88em;
+    background: var(--surface2);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .rich-message .rich-pre {
+    margin: 0.5rem 0;
+    padding: 0.65rem 0.85rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .rich-message .rich-pre code {
+    font-family: 'DM Mono', ui-monospace, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: block;
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
   .q-answer-area { margin-bottom: 0.75rem; }
   .answer-label { font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 0.4rem; }
   .answer-box {
@@ -219,6 +407,94 @@
     transition: border-color 0.15s;
   }
   .answer-box:focus { border-color: var(--accent); background: white; }
+  .format-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 0.4rem;
+    position: relative;
+    z-index: 10;
+  }
+  .format-toolbar--compact { margin-bottom: 0.35rem; }
+  .format-toolbar-label {
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 2px;
+  }
+  .fmt-btn {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    font-family: inherit;
+    font-size: 0.76rem;
+    color: var(--text);
+    cursor: pointer;
+    line-height: 1;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .fmt-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .fmt-btn.fmt-btn-b { font-weight: 700; }
+  .fmt-btn.fmt-btn-i { font-style: italic; font-family: Georgia, 'Times New Roman', serif; }
+  .fmt-btn.fmt-btn-s { text-decoration: line-through; font-size: 0.72rem; }
+  .fmt-btn.fmt-btn-mono { font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.68rem; }
+  .fmt-btn.fmt-emoji { font-size: 0.95rem; min-width: 30px; padding: 0 3px; }
+  .fmt-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 2px;
+    flex-shrink: 0;
+  }
+  .fmt-emoji-more { position: relative; }
+  .fmt-emoji-more summary.fmt-more-summary {
+    list-style: none;
+    min-width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .fmt-emoji-more summary.fmt-more-summary::-webkit-details-marker { display: none; }
+  .fmt-emoji-more summary.fmt-more-summary:hover { border-color: var(--accent); color: var(--accent); }
+  .fmt-emoji-grid {
+    position: absolute;
+    z-index: 100;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    padding: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+  }
+
+  .answer-paste-preview { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.35rem; min-height: 0; }
+  .paste-preview-item { position: relative; display: inline-block; }
+  .paste-preview-item img { display: block; max-height: 100px; max-width: 220px; border-radius: 8px; border: 1px solid var(--border); object-fit: contain; background: var(--surface2); }
+  .paste-preview-remove { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: var(--text); color: white; font-size: 0.85rem; line-height: 1; cursor: pointer; }
+  .answer-attached-images { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.35rem; }
+  .answer-attached-images img { max-height: 160px; max-width: 100%; border-radius: 6px; border: 1px solid var(--border); object-fit: contain; }
+  .q-attached-images { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.5rem 0 0; }
+  .q-attached-images img { max-width: 100%; max-height: 220px; border-radius: var(--radius-sm); border: 1px solid var(--border); object-fit: contain; background: var(--surface2); }
 
   .q-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .action-btn {
@@ -451,6 +727,91 @@
               </div>
               <button class="save-btn" onclick="saveSession()">Save session info</button>
             </div>
+            <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+              <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">Live bulletin (students)</div>
+              <p style="font-size:0.75rem;color:var(--text-light);margin-bottom:0.65rem;line-height:1.45;">One notice at the top of the student board. Slack-style: <code style="font-size:0.85em;">*bold*</code>, <code>_italic_</code>, <code>~strike~</code>, <code>`inline code`</code>, and fenced triple-backtick code blocks; emojis; <code>https://</code> links; image URLs one per line.</p>
+              <div class="form-field">
+                <label>Title</label>
+                <input class="mini-input" id="bulletin-title-input" type="text" placeholder="e.g. Room change — we’re in Hall B now">
+              </div>
+              <div class="form-field">
+                <label>Message</label>
+                <div class="format-toolbar format-toolbar--compact" role="toolbar" aria-label="Insert formatting">
+                  <span class="format-toolbar-label">Format</span>
+                  <button type="button" class="fmt-btn fmt-btn-b" title="Bold" aria-label="Bold" onclick="insertSlackFormat('bulletin-body-input','bold')"><strong>B</strong></button>
+                  <button type="button" class="fmt-btn fmt-btn-i" title="Italic" aria-label="Italic" onclick="insertSlackFormat('bulletin-body-input','italic')"><em>I</em></button>
+                  <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough" aria-label="Strikethrough" onclick="insertSlackFormat('bulletin-body-input','strike')"><span style="text-decoration:line-through;">S</span></button>
+                  <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code" aria-label="Inline code" onclick="insertSlackFormat('bulletin-body-input','code')">`</button>
+                  <button type="button" class="fmt-btn fmt-btn-mono" title="Code block" aria-label="Code block" onclick="insertSlackFormat('bulletin-body-input','fenced')">{ }</button>
+                  <span class="fmt-sep" aria-hidden="true"></span>
+                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','👍')">👍</button>
+                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','✅')">✅</button>
+                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','💡')">💡</button>
+                  <details class="fmt-emoji-more" id="bulletin-emoji-more" onclick="event.stopPropagation()">
+                    <summary class="fmt-more-summary" title="More emojis">⋯</summary>
+                    <div class="fmt-emoji-grid">
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','🎉');closeFmtEmojiDetails('bulletin-emoji-more')">🎉</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','👏');closeFmtEmojiDetails('bulletin-emoji-more')">👏</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','❓');closeFmtEmojiDetails('bulletin-emoji-more')">❓</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','❤️');closeFmtEmojiDetails('bulletin-emoji-more')">❤️</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','🚀');closeFmtEmojiDetails('bulletin-emoji-more')">🚀</button>
+                    </div>
+                  </details>
+                </div>
+                <textarea class="mini-input mini-textarea" id="bulletin-body-input" placeholder="Important links, timing, anything everyone should see…"></textarea>
+              </div>
+              <div class="form-field">
+                <label>Image URLs (https, one per line)</label>
+                <textarea class="mini-input mini-textarea" id="bulletin-urls-input" style="min-height:72px;" placeholder="https://…"></textarea>
+              </div>
+              <button class="save-btn" style="background:var(--text);" onclick="saveBulletin()">Save bulletin</button>
+            </div>
+            <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+              <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Session sidebar (students)</div>
+              <p style="font-size:0.75rem;color:var(--text-light);margin-bottom:0.65rem;line-height:1.45;">Shows under <strong>Session</strong> on the student board. Same formatting as the bulletin (<code style="font-size:0.85em;">*bold*</code>, <code>_italic_</code>, <code>~strike~</code>, <code>`code`</code>, fenced blocks, emojis, links). Image URLs one per line.</p>
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;margin-bottom:0.65rem;cursor:pointer;user-select:none;">
+                <input type="checkbox" id="session-note-show" style="width:16px;height:16px;accent-color:var(--accent);"> Show on student sidebar
+              </label>
+              <div class="form-field">
+                <label>Title (optional)</label>
+                <input class="mini-input" id="session-note-title-input" type="text" placeholder="e.g. WiFi, slides, parking">
+              </div>
+              <div class="form-field">
+                <label>Message</label>
+                <div class="format-toolbar format-toolbar--compact" role="toolbar" aria-label="Insert formatting">
+                  <span class="format-toolbar-label">Format</span>
+                  <button type="button" class="fmt-btn fmt-btn-b" title="Bold" aria-label="Bold" onclick="insertSlackFormat('session-note-body-input','bold')"><strong>B</strong></button>
+                  <button type="button" class="fmt-btn fmt-btn-i" title="Italic" aria-label="Italic" onclick="insertSlackFormat('session-note-body-input','italic')"><em>I</em></button>
+                  <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough" aria-label="Strikethrough" onclick="insertSlackFormat('session-note-body-input','strike')"><span style="text-decoration:line-through;">S</span></button>
+                  <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code" aria-label="Inline code" onclick="insertSlackFormat('session-note-body-input','code')">`</button>
+                  <button type="button" class="fmt-btn fmt-btn-mono" title="Code block" aria-label="Code block" onclick="insertSlackFormat('session-note-body-input','fenced')">{ }</button>
+                  <span class="fmt-sep" aria-hidden="true"></span>
+                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','👍')">👍</button>
+                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','✅')">✅</button>
+                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','💡')">💡</button>
+                  <details class="fmt-emoji-more" id="session-note-emoji-more" onclick="event.stopPropagation()">
+                    <summary class="fmt-more-summary" title="More emojis">⋯</summary>
+                    <div class="fmt-emoji-grid">
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','🎉');closeFmtEmojiDetails('session-note-emoji-more')">🎉</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','👏');closeFmtEmojiDetails('session-note-emoji-more')">👏</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','❓');closeFmtEmojiDetails('session-note-emoji-more')">❓</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','❤️');closeFmtEmojiDetails('session-note-emoji-more')">❤️</button>
+                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','🚀');closeFmtEmojiDetails('session-note-emoji-more')">🚀</button>
+                    </div>
+                  </details>
+                </div>
+                <textarea class="mini-input mini-textarea" id="session-note-body-input" placeholder="Links, dial-in, anything students should keep handy…"></textarea>
+              </div>
+              <div class="form-field">
+                <label>Image URLs (https, one per line)</label>
+                <textarea class="mini-input mini-textarea" id="session-note-urls-input" style="min-height:56px;" placeholder="https://…"></textarea>
+              </div>
+              <button class="save-btn" style="background:var(--accent);" onclick="saveSessionNote()">Save session note</button>
+            </div>
+            <div style="margin-top:1rem;">
+              <button type="button" class="save-btn" style="background:var(--surface2);color:var(--text);border:1.5px solid var(--border);" onclick="duplicateSessionFromCurrent()">New session from this one</button>
+              <p style="font-size:0.72rem;color:var(--text-light);margin-top:0.45rem;line-height:1.4;">Copies session details, bulletin, and session sidebar note into a <strong>new</strong> code. Past questions stay in the old session in Firebase.</p>
+            </div>
           </div>
         </div>
 
@@ -480,16 +841,22 @@
     <div class="main-panel">
       <div class="panel-header">
         <div class="panel-title" id="panel-title">Questions</div>
-        <div class="sort-row">
+        <div class="sort-row" style="margin-left:auto;">
           <button class="sort-btn active" onclick="setSort('recent',this)">Recent</button>
           <button class="sort-btn" onclick="setSort('votes',this)">Most voted</button>
         </div>
+      </div>
+      <div id="instr-pagination-top" class="q-pagination-num-wrap" aria-label="Question pages"></div>
+      <div class="questions-search-row">
+        <input type="search" id="instr-questions-search" class="questions-search-input" placeholder="Search questions…" autocomplete="off" aria-label="Search questions and answers" />
+        <button type="button" class="top-btn" onclick="clearInstructorSearch()" style="flex-shrink:0;">Clear</button>
       </div>
       <div id="questions-list">
         <div class="empty-state">
           <p style="font-size:0.95rem;">Select or create a session to get started.</p>
         </div>
       </div>
+      <div id="instr-pagination-bottom" class="q-pagination-num-wrap" aria-label="Question pages"></div>
     </div>
   </div>
 </div>
@@ -517,10 +884,6 @@
       <div style="font-weight:600;font-size:.95rem;letter-spacing:-.02em;margin-bottom:.4rem;" id="sdemo-session-title">Agentforce Fundamentals — Track A</div>
       <div style="display:flex;gap:1rem;flex-wrap:wrap;">
         <span style="font-size:.78rem;color:#7a7570;display:flex;align-items:center;gap:4px;">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          Alex Rivera
-        </span>
-        <span style="font-size:.78rem;color:#7a7570;display:flex;align-items:center;gap:4px;">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
           Hall D — Room 214
         </span>
@@ -529,7 +892,16 @@
 
     <!-- Ask box -->
     <div style="background:#fff;border-bottom:1px solid #e2ddd6;padding:.9rem 1.25rem;flex-shrink:0;">
-      <div style="font-weight:500;font-size:.85rem;margin-bottom:.6rem;">Ask a question</div>
+      <div style="font-weight:500;font-size:.85rem;margin-bottom:.45rem;">Ask a question</div>
+      <div class="format-toolbar format-toolbar--compact" role="toolbar" aria-label="Insert formatting" style="margin-bottom:.45rem;">
+        <button type="button" class="fmt-btn fmt-btn-b" title="Bold" onclick="insertSlackFormat('sdemo-q-text','bold')"><strong>B</strong></button>
+        <button type="button" class="fmt-btn fmt-btn-i" title="Italic" onclick="insertSlackFormat('sdemo-q-text','italic')"><em>I</em></button>
+        <button type="button" class="fmt-btn fmt-btn-s" title="Strike" onclick="insertSlackFormat('sdemo-q-text','strike')"><span style="text-decoration:line-through;">S</span></button>
+        <button type="button" class="fmt-btn fmt-btn-mono" title="Code" onclick="insertSlackFormat('sdemo-q-text','code')">`</button>
+        <button type="button" class="fmt-btn fmt-btn-mono" title="Block" onclick="insertSlackFormat('sdemo-q-text','fenced')">{ }</button>
+        <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','👍')">👍</button>
+        <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','✅')">✅</button>
+      </div>
       <textarea id="sdemo-q-text" placeholder="What's on your mind?" style="width:100%;border:1.5px solid #e2ddd6;border-radius:8px;padding:.6rem .8rem;font-family:inherit;font-size:.85rem;resize:none;height:70px;background:#f7f6f3;color:#1a1814;outline:none;" onfocus="this.style.borderColor='#0070d2';this.style.background='#fff'" onblur="this.style.borderColor='#e2ddd6';this.style.background='#f7f6f3'"></textarea>
       <div style="display:flex;gap:.6rem;margin-top:.5rem;">
         <input type="text" id="sdemo-name" placeholder="Your name (optional)" value="Demo Student" style="flex:1;padding:.5rem .7rem;border:1.5px solid #e2ddd6;border-radius:8px;font-family:inherit;font-size:.82rem;background:#f7f6f3;color:#1a1814;outline:none;">
@@ -616,8 +988,8 @@
 </div>
 
 <!-- Delete confirm modal -->
-<div class="modal-overlay" id="delete-modal">
-  <div class="modal">
+<div class="modal-overlay" id="delete-modal" onclick="if (event.target === this) closeDelete()">
+  <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">Delete this question?</div>
     <div class="modal-body">This action can't be undone. The question and any answer will be permanently removed.</div>
     <div class="modal-footer">
@@ -629,6 +1001,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
 <script>
 // ══════════════════════════════════════════════
 //  FIREBASE CONFIG
@@ -643,22 +1016,36 @@ const FIREBASE_CONFIG = {
 };
 // ══════════════════════════════════════════════
 
-let db, activeSessionCode = null, allQuestions = [];
+const QUESTIONS_PAGE_SIZE = 25;
+
+let db, storage = null, activeSessionCode = null, allQuestions = [];
 let currentFilter = 'all', currentSort = 'recent';
 let deleteTargetId = null, unsubQuestions = null, unsubSession = null;
 let allSessions = [], currentInstructor = null, isDemoMode = false;
+let questionPages = [];
+let currentQuestionPage = 0;
+let hasMoreOlder = false, questionsLoading = false;
+const answerDrafts = {};
+const pendingAnswerImages = {};
 
 const DEMO_SESSION_CODE = 'TDX-DEMO';
 const DEMO_SESSION = {
   id: DEMO_SESSION_CODE,
   className: 'Agentforce Instructor Series',
   sessionName: 'Agentforce Fundamentals — Track A',
-  instructors: ['Alex Rivera', 'Jordan Lee'],
-  instructorNames: 'Alex Rivera, Jordan Lee',
+  instructors: [],
+  instructorNames: '',
   sessionDate: 'Apr 10, 2026',
   sessionTime: '10:00 AM',
   room: 'Hall D — Room 214',
-  description: 'Intro to Agentforce: architecture, agent types, and how to build your first autonomous agent without code.'
+  description: 'Intro to Agentforce: architecture, agent types, and how to build your first autonomous agent without code.',
+  bulletinTitle: 'Before we start',
+  bulletinBody: 'Wifi and lab links go here. Line breaks and https:// links are supported.',
+  bulletinImageUrls: [],
+  sessionNoteShow: true,
+  sessionNoteTitle: 'Quick links',
+  sessionNoteBody: 'Example: https://trailhead.salesforce.com — appears under Session for students.',
+  sessionNoteImageUrls: []
 };
 const DEMO_QUESTIONS_TEMPLATE = [
   { id:'dq1', pinned:true,  status:'pending',  authorName:'Maria S.',  authorEmail:'maria@trailblazer.io', authorId:'u1', votes:7,  voters:[], answer:'',
@@ -740,13 +1127,17 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2500);
 }
 
-function formatTime(ts) {
+function formatQuestionWhen(ts) {
   if (!ts) return '';
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const diff = Date.now() - d.getTime();
-  if (diff < 60000) return 'just now';
-  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
-  return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
 // Simple hash — not cryptographic, but prevents plain-text storage
@@ -766,8 +1157,10 @@ window.addEventListener('load', () => {
     try {
       firebase.initializeApp(FIREBASE_CONFIG);
       db = firebase.firestore();
+      if (firebase.storage) storage = firebase.storage();
     } catch(e) { console.warn('Firebase init failed:', e); }
   }
+  document.addEventListener('paste', onAnswerBoxPaste, true);
   const savedName = sessionStorage.getItem('tdx_instructor_name');
   const savedDemo = sessionStorage.getItem('tdx_is_demo');
   if (savedName) {
@@ -855,6 +1248,8 @@ function instructorLogout() {
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('signin-name').value = '';
   document.getElementById('signin-pin').value = '';
+  const logoutSearch = document.getElementById('instr-questions-search');
+  if (logoutSearch) logoutSearch.value = '';
   switchMode('signin');
 }
 
@@ -868,11 +1263,19 @@ function enterDemoMode() {
 
 function showDashboard() {
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-screen').style.display = 'block';
+  document.getElementById('app-screen').style.display = 'flex';
   // reset session state for fresh login
   activeSessionCode = null;
   allSessions = [];
   allQuestions = [];
+  questionPages = [];
+  currentQuestionPage = 0;
+  hasMoreOlder = false;
+  Object.keys(answerDrafts).forEach(k => { delete answerDrafts[k]; });
+  Object.keys(pendingAnswerImages).forEach(k => { delete pendingAnswerImages[k]; });
+  const dashSearch = document.getElementById('instr-questions-search');
+  if (dashSearch) dashSearch.value = '';
+  if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
   document.getElementById('active-code').textContent = '—';
   document.getElementById('session-dependent-sections').style.display = 'none';
   document.getElementById('questions-list').innerHTML = '<div class="empty-state"><p style="font-size:0.95rem;">Select or create a session to get started.</p></div>';
@@ -895,11 +1298,16 @@ function showDashboard() {
 
 function loadDemoSessions() {
   allSessions = [DEMO_SESSION];
-  allQuestions = DEMO_QUESTIONS_TEMPLATE.map(q => ({...q, voters: [...q.voters]}));
+  const qs = DEMO_QUESTIONS_TEMPLATE.map(q => ({...q, voters: [...q.voters]}));
+  questionPages = [{ questions: qs, endSnap: null }];
+  currentQuestionPage = 0;
+  hasMoreOlder = false;
+  rebuildAllQuestions();
   activeSessionCode = DEMO_SESSION_CODE;
   renderSessionsList();
   renderQuestions();
   updateStats();
+  updateInstructorPaginationUi();
   fillSessionForm(DEMO_SESSION);
   document.getElementById('active-code').textContent = DEMO_SESSION_CODE;
   document.getElementById('session-dependent-sections').style.display = 'block';
@@ -910,6 +1318,13 @@ function fillSessionForm(s) {
   document.getElementById('sf-session').value = s.sessionName || '';
   document.getElementById('sf-room').value = s.room || '';
   document.getElementById('sf-desc').value = s.description || '';
+  document.getElementById('bulletin-title-input').value = s.bulletinTitle || '';
+  document.getElementById('bulletin-body-input').value = s.bulletinBody || '';
+  document.getElementById('bulletin-urls-input').value = Array.isArray(s.bulletinImageUrls) ? s.bulletinImageUrls.join('\n') : '';
+  document.getElementById('session-note-show').checked = (s.sessionNoteShow !== false);
+  document.getElementById('session-note-title-input').value = s.sessionNoteTitle || '';
+  document.getElementById('session-note-body-input').value = s.sessionNoteBody || '';
+  document.getElementById('session-note-urls-input').value = Array.isArray(s.sessionNoteImageUrls) ? s.sessionNoteImageUrls.join('\n') : '';
   // date/time — convert display back to input format if possible
   if (s.sessionDate) {
     try {
@@ -922,6 +1337,386 @@ function fillSessionForm(s) {
   // instructors
   const instructors = s.instructors || (s.instructorNames ? s.instructorNames.split(',').map(n=>n.trim()).filter(Boolean) : []);
   renderInstructorList(instructors);
+}
+
+function parseBulletinUrls(raw) {
+  if (!raw || !String(raw).trim()) return [];
+  return String(raw).split(/\r?\n/).map(l => l.trim()).filter(u => /^https:\/\//i.test(u));
+}
+
+function rebuildAllQuestions() {
+  const pg = questionPages[currentQuestionPage];
+  allQuestions = pg && pg.questions ? pg.questions.slice() : [];
+}
+
+function getAllCachedInstructorQuestionsForStats() {
+  const m = new Map();
+  questionPages.forEach(p => { (p.questions || []).forEach(q => m.set(q.id, q)); });
+  return Array.from(m.values());
+}
+
+function findInstructorQuestionById(id) {
+  const hit = allQuestions.find(x => x.id === id);
+  if (hit) return hit;
+  return getAllCachedInstructorQuestionsForStats().find(x => x.id === id);
+}
+
+function getInstructorQuestionSearchHaystack(q) {
+  const bits = [q.text, q.authorName, q.authorEmail];
+  const answers = q.answers && q.answers.length ? q.answers : (q.answer ? [{ text: q.answer, instructor: 'Instructor' }] : []);
+  answers.forEach(a => {
+    bits.push(a.text, a.instructor);
+    if (Array.isArray(a.imageUrls)) bits.push(a.imageUrls.join(' '));
+  });
+  return bits.filter(Boolean).join('\n');
+}
+
+function filterInstructorQuestionsBySearchQuery(corpus, query) {
+  const t = String(query || '').trim();
+  if (!t) return corpus.slice();
+  if (typeof Fuse !== 'undefined') {
+    const indexed = corpus.map(q => ({ q, _h: getInstructorQuestionSearchHaystack(q) }));
+    const fuse = new Fuse(indexed, {
+      keys: ['_h'],
+      threshold: 0.42,
+      ignoreLocation: true
+    });
+    return fuse.search(t).map(r => r.item.q);
+  }
+  const low = t.toLowerCase();
+  return corpus.filter(q => getInstructorQuestionSearchHaystack(q).toLowerCase().indexOf(low) !== -1);
+}
+
+function getInstructorSearchQuery() {
+  const el = document.getElementById('instr-questions-search');
+  return el && el.value ? String(el.value).trim() : '';
+}
+
+function clearInstructorSearch() {
+  const el = document.getElementById('instr-questions-search');
+  if (el) el.value = '';
+  renderQuestions();
+  updateInstructorPaginationUi();
+}
+
+function buildInstructorPaginationHtml() {
+  const numLoaded = questionPages.length;
+  if (!numLoaded) return '';
+  const cur = questionPages[currentQuestionPage];
+  const canPrev = currentQuestionPage > 0;
+  const canNextCached = currentQuestionPage < numLoaded - 1;
+  const canNextFetch = !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
+  const canNext = canNextCached || canNextFetch;
+  const lastPg = questionPages[numLoaded - 1];
+  const showPhantomNext = !!(lastPg && lastPg.endSnap && lastPg.questions.length >= QUESTIONS_PAGE_SIZE);
+  const totalSlots = numLoaded + (showPhantomNext ? 1 : 0);
+  const maxNums = 5;
+  let lo = 0;
+  let hi = totalSlots;
+  if (totalSlots > maxNums) {
+    const half = Math.floor(maxNums / 2);
+    lo = Math.max(0, Math.min(currentQuestionPage - half, totalSlots - maxNums));
+    hi = lo + maxNums;
+  }
+  const parts = [];
+  parts.push('<div class="pagination-nav-cluster">');
+  parts.push(`<button type="button" class="page-nav-btn instr-p-prev"${canPrev ? '' : ' disabled'} onclick="goInstructorPreviousPage()">Previous</button>`);
+  for (let i = lo; i < hi; i++) {
+    const isAct = i === currentQuestionPage;
+    if (i < numLoaded) {
+      parts.push(`<button type="button" class="pagination-page-btn${isAct ? ' active' : ''}" onclick="goInstructorToPage(${i})">${i + 1}</button>`);
+    } else {
+      parts.push(`<button type="button" class="pagination-page-btn" title="Load older questions" aria-label="Go to page ${i + 1}" onclick="goInstructorNextPage()">${i + 1}</button>`);
+    }
+  }
+  parts.push(`<button type="button" class="page-nav-btn instr-p-next"${canNext ? '' : ' disabled'} onclick="goInstructorNextPage()">Next</button>`);
+  parts.push('</div>');
+  return parts.join('');
+}
+
+function updateInstructorPaginationUi() {
+  const top = document.getElementById('instr-pagination-top');
+  const bottom = document.getElementById('instr-pagination-bottom');
+  if (top && bottom) {
+    const searching = !!getInstructorSearchQuery();
+    const show = !searching && !!(activeSessionCode && (questionPages[0] || currentQuestionPage > 0));
+    const html = show ? buildInstructorPaginationHtml() : '';
+    top.innerHTML = html;
+    bottom.innerHTML = html;
+    top.classList.toggle('visible', show);
+    bottom.classList.toggle('visible', show);
+    top.style.display = show ? 'flex' : 'none';
+    bottom.style.display = show ? 'flex' : 'none';
+  }
+}
+
+function saveBulletin() {
+  if (!activeSessionCode) { showToast('Select a session first.'); return; }
+  const bulletinTitle = document.getElementById('bulletin-title-input').value.trim();
+  const bulletinBody = document.getElementById('bulletin-body-input').value.trim();
+  const bulletinImageUrls = parseBulletinUrls(document.getElementById('bulletin-urls-input').value);
+  if (isDemoMode) {
+    const s = allSessions.find(x => x.id === activeSessionCode);
+    if (s) {
+      s.bulletinTitle = bulletinTitle;
+      s.bulletinBody = bulletinBody;
+      s.bulletinImageUrls = bulletinImageUrls;
+    }
+    showToast('Bulletin updated (demo).');
+    return;
+  }
+  db.collection('sessions').doc(activeSessionCode).update({
+    bulletinTitle,
+    bulletinBody,
+    bulletinImageUrls,
+    bulletinUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(() => showToast('Bulletin saved.')).catch(e => showToast('Error: ' + e.message));
+}
+
+function saveSessionNote() {
+  if (!activeSessionCode) { showToast('Select a session first.'); return; }
+  const sessionNoteShow = document.getElementById('session-note-show').checked;
+  const sessionNoteTitle = document.getElementById('session-note-title-input').value.trim();
+  const sessionNoteBody = document.getElementById('session-note-body-input').value.trim();
+  const sessionNoteImageUrls = parseBulletinUrls(document.getElementById('session-note-urls-input').value);
+  if (isDemoMode) {
+    const s = allSessions.find(x => x.id === activeSessionCode);
+    if (s) {
+      s.sessionNoteShow = sessionNoteShow;
+      s.sessionNoteTitle = sessionNoteTitle;
+      s.sessionNoteBody = sessionNoteBody;
+      s.sessionNoteImageUrls = sessionNoteImageUrls;
+    }
+    showToast('Session note updated (demo).');
+    return;
+  }
+  db.collection('sessions').doc(activeSessionCode).update({
+    sessionNoteShow,
+    sessionNoteTitle,
+    sessionNoteBody,
+    sessionNoteImageUrls,
+    sessionNoteUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(() => showToast('Session note saved.')).catch(e => showToast('Error: ' + e.message));
+}
+
+function duplicateSessionFromCurrent() {
+  if (!activeSessionCode) { showToast('Select a session first.'); return; }
+  if (isDemoMode) { showToast('Exit demo to duplicate into Firebase.'); return; }
+  db.collection('sessions').doc(activeSessionCode).get().then(doc => {
+    if (!doc.exists) { showToast('Session not found.'); return; }
+    const d = doc.data();
+    const code = genCode();
+    const ownerId = nameToId(currentInstructor || '');
+    const newName = (d.sessionName || d.className || 'Session').trim() + ' (copy)';
+    return db.collection('sessions').doc(code).set({
+      className: d.className || '',
+      sessionName: newName,
+      instructorNames: currentInstructor || '',
+      instructors: currentInstructor ? [currentInstructor] : [],
+      sessionDate: d.sessionDate || '',
+      sessionTime: d.sessionTime || '',
+      room: d.room || '',
+      description: d.description || '',
+      bulletinTitle: d.bulletinTitle || '',
+      bulletinBody: d.bulletinBody || '',
+      bulletinImageUrls: Array.isArray(d.bulletinImageUrls) ? [...d.bulletinImageUrls] : [],
+      sessionNoteShow: d.sessionNoteShow !== false,
+      sessionNoteTitle: d.sessionNoteTitle || '',
+      sessionNoteBody: d.sessionNoteBody || '',
+      sessionNoteImageUrls: Array.isArray(d.sessionNoteImageUrls) ? [...d.sessionNoteImageUrls] : [],
+      ownerId,
+      ownerName: currentInstructor || '',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(() => {
+      showToast('New session: ' + code);
+      const sessionData = { id: code, className: d.className || '', sessionName: newName, instructorNames: currentInstructor || '', instructors: currentInstructor ? [currentInstructor] : [], sessionDate: d.sessionDate || '', sessionTime: d.sessionTime || '', room: d.room || '', description: d.description || '', bulletinTitle: d.bulletinTitle || '', bulletinBody: d.bulletinBody || '', bulletinImageUrls: Array.isArray(d.bulletinImageUrls) ? [...d.bulletinImageUrls] : [], sessionNoteShow: d.sessionNoteShow !== false, sessionNoteTitle: d.sessionNoteTitle || '', sessionNoteBody: d.sessionNoteBody || '', sessionNoteImageUrls: Array.isArray(d.sessionNoteImageUrls) ? [...d.sessionNoteImageUrls] : [], ownerId, ownerName: currentInstructor || '' };
+      allSessions.unshift(sessionData);
+      renderSessionsList();
+      selectSession(code);
+    });
+  }).catch(e => showToast('Error: ' + e.message));
+}
+
+function goInstructorOlderPage() {
+  if (!activeSessionCode || isDemoMode || questionsLoading) return;
+  const cur = questionPages[currentQuestionPage];
+  if (!cur || !cur.endSnap || cur.questions.length < QUESTIONS_PAGE_SIZE) return;
+  const nextIdx = currentQuestionPage + 1;
+  if (questionPages[nextIdx]) {
+    currentQuestionPage = nextIdx;
+    rebuildAllQuestions();
+    captureAnswerDrafts();
+    renderQuestions();
+    restoreAnswerDrafts();
+    updateStats();
+    updateInstructorPaginationUi();
+    return;
+  }
+  questionsLoading = true;
+  db.collection('sessions').doc(activeSessionCode).collection('questions')
+    .orderBy('createdAt', 'desc')
+    .startAfter(cur.endSnap)
+    .limit(QUESTIONS_PAGE_SIZE)
+    .get()
+    .then(snap => {
+      const questions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const endSnap = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
+      questionPages[nextIdx] = { questions, endSnap };
+      currentQuestionPage = nextIdx;
+      rebuildAllQuestions();
+      captureAnswerDrafts();
+      renderQuestions();
+      restoreAnswerDrafts();
+      updateStats();
+      updateInstructorPaginationUi();
+    })
+    .finally(() => { questionsLoading = false; });
+}
+
+function goInstructorToPage(zeroBased) {
+  if (zeroBased < 0 || zeroBased >= questionPages.length || !questionPages[zeroBased]) return;
+  if (zeroBased === currentQuestionPage) return;
+  currentQuestionPage = zeroBased;
+  rebuildAllQuestions();
+  captureAnswerDrafts();
+  renderQuestions();
+  restoreAnswerDrafts();
+  updateStats();
+  updateInstructorPaginationUi();
+}
+
+function goInstructorPreviousPage() {
+  if (currentQuestionPage <= 0) return;
+  goInstructorToPage(currentQuestionPage - 1);
+}
+
+function goInstructorNextPage() {
+  if (questionsLoading) return;
+  if (currentQuestionPage < questionPages.length - 1) {
+    goInstructorToPage(currentQuestionPage + 1);
+    return;
+  }
+  goInstructorOlderPage();
+}
+
+function captureAnswerDrafts() {
+  document.querySelectorAll('#questions-list textarea.answer-box').forEach(ta => {
+    if (ta.id && ta.id.indexOf('ans-') === 0) {
+      const qid = ta.id.slice(4);
+      answerDrafts[qid] = ta.value;
+    }
+  });
+}
+
+function restoreAnswerDrafts() {
+  Object.keys(answerDrafts).forEach(qid => {
+    const ta = document.getElementById('ans-' + qid);
+    if (ta) ta.value = answerDrafts[qid];
+  });
+}
+
+const IMG_MAX_EDGE = 1600;
+const IMG_JPEG_Q = 0.82;
+
+function collectImageFilesFromPaste(ev) {
+  const out = [];
+  const cd = ev.clipboardData;
+  if (!cd) return out;
+  if (cd.items) {
+    for (let i = 0; i < cd.items.length; i++) {
+      if (cd.items[i].type && cd.items[i].type.indexOf('image') === 0) {
+        const f = cd.items[i].getAsFile();
+        if (f) out.push(f);
+      }
+    }
+  }
+  if (!out.length && cd.files && cd.files.length) {
+    for (let j = 0; j < cd.files.length; j++) {
+      if (cd.files[j].type && cd.files[j].type.indexOf('image') === 0) out.push(cd.files[j]);
+    }
+  }
+  return out;
+}
+
+function resizeImageToJpegBlobInstr(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const u = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(u);
+      const w = img.width, h = img.height;
+      const scale = Math.min(1, IMG_MAX_EDGE / Math.max(w, h, 1));
+      const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+      const c = document.createElement('canvas');
+      c.width = cw; c.height = ch;
+      c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+      c.toBlob(blob => { if (blob) resolve(blob); else reject(new Error('encode')); }, 'image/jpeg', IMG_JPEG_Q);
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('img')); };
+    img.src = u;
+  });
+}
+
+function uploadInstructorAnswerImage(jpegBlob, qid) {
+  if (!storage || !activeSessionCode) return Promise.reject(new Error('no storage'));
+  const path = 'sessions/' + activeSessionCode + '/answer_paste/' + qid + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
+  return storage.ref(path).put(jpegBlob, { contentType: 'image/jpeg' }).then(snap => snap.ref.getDownloadURL());
+}
+
+function syncAnswerPastePreviews() {
+  Object.keys(pendingAnswerImages).forEach(qid => {
+    const el = document.getElementById('ans-prev-' + qid);
+    const urls = pendingAnswerImages[qid] || [];
+    if (!el) return;
+    if (!urls.length) { el.innerHTML = ''; return; }
+    el.innerHTML = urls.map(url => `<span class="paste-preview-item"><img src="${esc(url)}" alt=""><button type="button" class="paste-preview-remove" data-qid="${esc(qid)}" data-url="${esc(url)}" aria-label="Remove">×</button></span>`).join('');
+    el.querySelectorAll('.paste-preview-remove').forEach(btn => {
+      btn.onclick = () => removePendingAnswerImage(btn.getAttribute('data-qid'), btn.getAttribute('data-url'));
+    });
+  });
+}
+
+function removePendingAnswerImage(qid, url) {
+  if (!pendingAnswerImages[qid]) return;
+  pendingAnswerImages[qid] = pendingAnswerImages[qid].filter(u => u !== url);
+  if (!pendingAnswerImages[qid].length) delete pendingAnswerImages[qid];
+  syncAnswerPastePreviews();
+}
+
+function onAnswerBoxPaste(e) {
+  const t = e.target;
+  if (!t || !t.classList || !t.classList.contains('answer-box')) return;
+  const files = collectImageFilesFromPaste(e);
+  if (!files.length) return;
+  if (isDemoMode) {
+    e.preventDefault();
+    showToast('Image paste: use a live session with Firebase Storage (see SETUP.md).');
+    return;
+  }
+  if (!activeSessionCode || !storage) {
+    e.preventDefault();
+    showToast('Enable Firebase Storage to paste images.');
+    return;
+  }
+  e.preventDefault();
+  const qid = t.id.replace(/^ans-/, '');
+  if (!qid) return;
+  if (!pendingAnswerImages[qid]) pendingAnswerImages[qid] = [];
+  (async () => {
+    for (const file of files) {
+      try {
+        showToast('Uploading image…');
+        const blob = await resizeImageToJpegBlobInstr(file);
+        const url = await uploadInstructorAnswerImage(blob, qid);
+        pendingAnswerImages[qid].push(url);
+        syncAnswerPastePreviews();
+        showToast('Image attached to this answer.');
+      } catch (err) {
+        console.warn(err);
+        showToast('Upload failed. Enable Storage + rules in Firebase (SETUP.md).');
+      }
+    }
+  })();
 }
 
 function loadSessions() {
@@ -987,19 +1782,42 @@ function selectSession(code) {
   activeSessionCode = code;
   renderSessionsList();
   document.getElementById('active-code').textContent = code;
-  // reveal session-dependent sections
   document.getElementById('session-dependent-sections').style.display = 'block';
-  // load session info into form
   const s = allSessions.find(x => x.id === code);
   if (s) fillSessionForm(s);
-  // live questions
-  if (unsubQuestions) unsubQuestions();
+
+  if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+  questionPages = [];
+  currentQuestionPage = 0;
+  hasMoreOlder = false;
+  Object.keys(pendingAnswerImages).forEach(k => { delete pendingAnswerImages[k]; });
+  const iqSearch = document.getElementById('instr-questions-search');
+  if (iqSearch) iqSearch.value = '';
+
+  if (isDemoMode) {
+    renderQuestions();
+    updateStats();
+    updateInstructorPaginationUi();
+    return;
+  }
+
   unsubQuestions = db.collection('sessions').doc(code).collection('questions')
-    .orderBy('createdAt','desc')
+    .orderBy('createdAt', 'desc')
+    .limit(QUESTIONS_PAGE_SIZE)
     .onSnapshot(snap => {
-      allQuestions = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      renderQuestions();
-      updateStats();
+      const questions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const endSnap = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
+      questionPages[0] = { questions, endSnap };
+      hasMoreOlder = snap.docs.length >= QUESTIONS_PAGE_SIZE;
+      if (currentQuestionPage === 0) {
+        if (questionPages.length > 1) questionPages.length = 1;
+        rebuildAllQuestions();
+        captureAnswerDrafts();
+        renderQuestions();
+        restoreAnswerDrafts();
+        updateStats();
+        updateInstructorPaginationUi();
+      }
     });
 }
 
@@ -1076,6 +1894,13 @@ function confirmCreateSession() {
     sessionTime: timeVal ? formatDisplayTime(timeVal) : '',
     room: document.getElementById('new-sf-room').value.trim(),
     description: document.getElementById('new-sf-desc').value.trim(),
+    bulletinTitle: '',
+    bulletinBody: '',
+    bulletinImageUrls: [],
+    sessionNoteShow: true,
+    sessionNoteTitle: '',
+    sessionNoteBody: '',
+    sessionNoteImageUrls: [],
     ownerId,
     ownerName: currentInstructor || '',
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1130,8 +1955,46 @@ function setSort(s, btn) {
   renderQuestions();
 }
 
+function normalizeQuestionImageUrls(q) {
+  const raw = q.imageUrls;
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(u => String(u).trim()).filter(isHttpsUrl);
+  if (typeof raw === 'string') return isHttpsUrl(raw) ? [raw.trim()] : [];
+  if (typeof raw === 'object') return Object.keys(raw).sort().map(k => raw[k]).map(u => String(u).trim()).filter(isHttpsUrl);
+  return [];
+}
+
+function htmlQuestionAttachedImagesInstr(q) {
+  const urls = normalizeQuestionImageUrls(q);
+  if (!urls.length) return '';
+  return '<div class="q-attached-images">' + urls.map(u => {
+    const safe = String(u).replace(/"/g, '');
+    return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+  }).join('') + '</div>';
+}
+
+function isImageOnlyPlaceholderText(text) {
+  const t = (text || '').trim().toLowerCase();
+  return t === '(image)' || t === '(photo)';
+}
+
+function htmlQuestionBodyInstr(q) {
+  const urls = normalizeQuestionImageUrls(q);
+  const rawText = q.text || '';
+  if (!String(rawText).trim() && urls.length) return '';
+  if (isImageOnlyPlaceholderText(rawText) && urls.length) return '';
+  if (isImageOnlyPlaceholderText(rawText) && !urls.length) {
+    return '<div class="q-text q-text-muted" style="white-space:pre-wrap;word-break:break-word;">No image was saved on this question.</div>';
+  }
+  if (!String(rawText).trim()) return '';
+  return '<div class="q-text rich-message" style="white-space:pre-wrap;word-break:break-word;">' + formatRichMessage(rawText) + '</div>';
+}
+
 function renderQuestions() {
-  let qs = [...allQuestions];
+  captureAnswerDrafts();
+  const searchQ = getInstructorSearchQuery();
+  const corpus = getAllCachedInstructorQuestionsForStats();
+  let qs = searchQ ? filterInstructorQuestionsBySearchQuery(corpus, searchQ) : [...allQuestions];
   if (currentFilter==='pinned') qs = qs.filter(q=>q.pinned);
   if (currentFilter==='answered') qs = qs.filter(q=>q.status==='answered');
   if (currentFilter==='pending') qs = qs.filter(q=>q.status!=='answered');
@@ -1145,7 +2008,12 @@ function renderQuestions() {
   });
   const list = document.getElementById('questions-list');
   if (!qs.length) {
-    list.innerHTML = '<div class="empty-state"><p>No questions in this view.</p></div>';
+    const emptyMsg = searchQ
+      ? 'No matches in loaded questions. Load more pages or clear the search.'
+      : 'No questions in this view.';
+    list.innerHTML = '<div class="empty-state"><p>' + emptyMsg + '</p></div>';
+    restoreAnswerDrafts();
+    syncAnswerPastePreviews();
     return;
   }
   list.innerHTML = qs.map(q => {
@@ -1157,7 +2025,8 @@ function renderQuestions() {
           <span style="font-size:0.72rem;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.05em;">${esc(a.instructor||'Instructor')}</span>
           <button onclick="deleteAnswer('${q.id}',${i})" style="background:none;border:none;font-size:0.8rem;color:var(--text-light);cursor:pointer;padding:0 2px;line-height:1;transition:color 0.15s;" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-light)'">×</button>
         </div>
-        <div style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${linkify(esc(a.text))}</div>
+        <div class="rich-message" style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${formatRichMessage(a.text||'')}</div>
+        ${(Array.isArray(a.imageUrls) && a.imageUrls.length) ? '<div class="answer-attached-images">' + a.imageUrls.filter(isHttpsUrl).map(u => { const safe = String(u).replace(/"/g, ''); return '<a href="'+safe+'" target="_blank" rel="noopener noreferrer"><img src="'+safe+'" alt="" loading="lazy" referrerpolicy="no-referrer"></a>'; }).join('') + '</div>' : ''}
       </div>`).join('');
     return `
     <div class="q-card ${q.pinned?'pinned':''} ${q.status==='answered'?'answered':''}" id="qcard-${q.id}">
@@ -1166,7 +2035,7 @@ function renderQuestions() {
           <div class="q-author-row">
             <span class="q-author">${esc(q.authorName||'Anonymous')}</span>
             ${q.authorEmail ? `` : ''}
-            <span class="q-time">${formatTime(q.createdAt)}</span>
+            <span class="q-time" title="Posted time">${formatQuestionWhen(q.createdAt)}</span>
           </div>
           <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;">
             ${q.pinned?'<span class="q-badge badge-pinned">Pinned</span>':''}
@@ -1178,11 +2047,14 @@ function renderQuestions() {
           ${q.votes||0}
         </div>
       </div>
-      <div class="q-text">${esc(q.text)}</div>
+      ${htmlQuestionBodyInstr(q)}
+      ${htmlQuestionAttachedImagesInstr(q)}
       ${answersHtml ? `<div style="margin-bottom:0.75rem;">${answersHtml}</div>` : ''}
       <div class="q-answer-area">
         <div class="answer-label">${answers.length ? 'Add another answer' : 'Answer'}</div>
-        <textarea class="answer-box" id="ans-${q.id}" placeholder="Type your answer here... (Shift+Enter for new line, paste links freely)"></textarea>
+        <div class="answer-paste-preview" id="ans-prev-${q.id}"></div>
+        ${instructorFormatToolbarHtml('ans-' + q.id)}
+        <textarea class="answer-box" id="ans-${q.id}" placeholder="Type your answer here… Paste links or screenshots (images upload to Firebase Storage)."></textarea>
       </div>
       <div class="q-actions">
         <button class="action-btn btn-answer" onclick="saveAnswer('${q.id}')">
@@ -1203,33 +2075,40 @@ function renderQuestions() {
       </div>
     </div>`;
   }).join('');
-}
-
-function linkify(text) {
-  return text.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all;">$1</a>');
+  restoreAnswerDrafts();
+  syncAnswerPastePreviews();
 }
 
 function saveAnswer(id) {
-  const text = document.getElementById('ans-'+id).value;
-  if (!text.trim()) return;
-  const q = allQuestions.find(x=>x.id===id);
+  const text = (document.getElementById('ans-'+id) && document.getElementById('ans-'+id).value) || '';
+  const imgs = pendingAnswerImages[id] && pendingAnswerImages[id].length ? [...pendingAnswerImages[id]] : [];
+  if (!text.trim() && !imgs.length) return;
+  const q = findInstructorQuestionById(id);
   if (!q) return;
-  const newAnswer = { instructor: currentInstructor || 'Instructor', text: text, ts: new Date().toISOString() };
+  const newAnswer = { instructor: currentInstructor || 'Instructor', text: text.trim() || (imgs.length ? '(Image)' : ''), ts: new Date().toISOString() };
+  if (imgs.length) newAnswer.imageUrls = imgs;
   const answers = q.answers ? [...q.answers] : (q.answer ? [{ instructor: 'Instructor', text: q.answer, ts: null }] : []);
   answers.push(newAnswer);
+  delete pendingAnswerImages[id];
   if (isDemoMode) {
     q.answers = answers; q.answer = ''; q.status = 'answered';
+    delete answerDrafts[id];
     renderQuestions(); updateStats();
     showToast('Answer saved!');
     return;
   }
   db.collection('sessions').doc(activeSessionCode).collection('questions').doc(id).update({
     answers, answer: '', status: 'answered'
-  }).then(() => showToast('Answer saved!'));
+  }).then(() => {
+    delete answerDrafts[id];
+    const ta = document.getElementById('ans-' + id);
+    if (ta) ta.value = '';
+    showToast('Answer saved!');
+  });
 }
 
 function deleteAnswer(qId, index) {
-  const q = allQuestions.find(x=>x.id===qId);
+  const q = findInstructorQuestionById(qId);
   if (!q) return;
   const answers = q.answers ? [...q.answers] : [];
   answers.splice(index, 1);
@@ -1246,7 +2125,7 @@ function deleteAnswer(qId, index) {
 }
 
 function togglePin(id) {
-  const q = allQuestions.find(x=>x.id===id);
+  const q = findInstructorQuestionById(id);
   if (!q) return;
   if (isDemoMode) {
     q.pinned = !q.pinned;
@@ -1260,7 +2139,7 @@ function togglePin(id) {
 
 function setStatus(id, status) {
   if (isDemoMode) {
-    const q = allQuestions.find(x=>x.id===id);
+    const q = findInstructorQuestionById(id);
     if (q) q.status = status;
     renderQuestions(); updateStats();
     showToast(status==='answered' ? 'Marked as answered.' : 'Marked as pending.');
@@ -1270,22 +2149,72 @@ function setStatus(id, status) {
     .then(() => showToast(status==='answered' ? 'Marked as answered.' : 'Marked as pending.'));
 }
 
-function openDelete(id) { deleteTargetId = id; document.getElementById('delete-modal').classList.add('open'); }
-function closeDelete() { document.getElementById('delete-modal').classList.remove('open'); deleteTargetId = null; }
+let deleteInProgress = false;
+
+function openDelete(id) {
+  deleteTargetId = id;
+  document.getElementById('delete-modal').classList.add('open');
+}
+
+function closeDelete() {
+  document.getElementById('delete-modal').classList.remove('open');
+  deleteTargetId = null;
+  deleteInProgress = false;
+  const dangerBtn = document.querySelector('#delete-modal .btn-danger');
+  if (dangerBtn) dangerBtn.disabled = false;
+}
+
 function confirmDelete() {
-  if (!deleteTargetId) return;
+  if (!deleteTargetId || deleteInProgress) return;
+  const rid = deleteTargetId;
+  const dangerBtn = document.querySelector('#delete-modal .btn-danger');
+
   if (isDemoMode) {
-    allQuestions = allQuestions.filter(x=>x.id!==deleteTargetId);
-    renderQuestions(); updateStats();
-    showToast('Question deleted.'); closeDelete();
+    questionPages.forEach(p => { p.questions = p.questions.filter(x => x.id !== rid); });
+    rebuildAllQuestions();
+    delete answerDrafts[rid];
+    delete pendingAnswerImages[rid];
+    renderQuestions();
+    updateStats();
+    showToast('Question deleted.');
+    closeDelete();
     return;
   }
-  db.collection('sessions').doc(activeSessionCode).collection('questions').doc(deleteTargetId).delete()
-    .then(() => { showToast('Question deleted.'); closeDelete(); });
+
+  deleteInProgress = true;
+  if (dangerBtn) dangerBtn.disabled = true;
+
+  db.collection('sessions').doc(activeSessionCode).collection('questions').doc(rid).delete()
+    .then(() => {
+      questionPages.forEach(p => { p.questions = p.questions.filter(x => x.id !== rid); });
+      rebuildAllQuestions();
+      delete answerDrafts[rid];
+      delete pendingAnswerImages[rid];
+      try {
+        renderQuestions();
+        updateStats();
+        showToast('Question deleted.');
+      } catch (err) {
+        console.error(err);
+        showToast('Question deleted on the server. Refresh the page if the list looks wrong.');
+      }
+    })
+    .catch((err) => {
+      console.error(err);
+      var msg = (err && err.code === 'permission-denied')
+        ? 'Firestore denied delete. In Firebase → Firestore → Rules, allow delete on questions (see SETUP.md).'
+        : ('Could not delete: ' + (err && err.message ? err.message : 'unknown error'));
+      showToast(msg);
+    })
+    .finally(() => {
+      deleteInProgress = false;
+      if (dangerBtn) dangerBtn.disabled = false;
+      closeDelete();
+    });
 }
 
 function updateStats() {
-  const qs = allQuestions;
+  const qs = getAllCachedInstructorQuestionsForStats();
   document.getElementById('stat-total').textContent = qs.length;
   document.getElementById('stat-answered').textContent = qs.filter(q=>q.status==='answered').length;
   document.getElementById('stat-pending').textContent = qs.filter(q=>q.status!=='answered').length;
@@ -1294,6 +2223,7 @@ function updateStats() {
   document.getElementById('fc-pinned').textContent = qs.filter(q=>q.pinned).length;
   document.getElementById('fc-pending').textContent = qs.filter(q=>q.status!=='answered').length;
   document.getElementById('fc-answered').textContent = qs.filter(q=>q.status==='answered').length;
+  updateInstructorPaginationUi();
   // keep student demo view in sync
   if (studentViewOpen) sdemoRender();
 }
@@ -1376,7 +2306,16 @@ function sdemoOpenEdit(id) {
   const textEl = document.getElementById('sdemo-text-' + id);
   if (!textEl) return;
   const current = q.text;
-  textEl.innerHTML = `<textarea id="sdemo-edit-ta-${id}" style="width:100%;border:1.5px solid #0070d2;border-radius:6px;padding:.5rem .7rem;font-family:inherit;font-size:.88rem;resize:vertical;outline:none;background:#fff;">${esc(current)}</textarea>
+  textEl.innerHTML = `<div class="format-toolbar format-toolbar--compact" style="margin-bottom:.35rem;">
+    <button type="button" class="fmt-btn fmt-btn-b" title="Bold" onclick="insertSlackFormat('sdemo-edit-ta-${id}','bold')"><strong>B</strong></button>
+    <button type="button" class="fmt-btn fmt-btn-i" title="Italic" onclick="insertSlackFormat('sdemo-edit-ta-${id}','italic')"><em>I</em></button>
+    <button type="button" class="fmt-btn fmt-btn-s" title="Strike" onclick="insertSlackFormat('sdemo-edit-ta-${id}','strike')"><span style="text-decoration:line-through;">S</span></button>
+    <button type="button" class="fmt-btn fmt-btn-mono" title="Code" onclick="insertSlackFormat('sdemo-edit-ta-${id}','code')">\`</button>
+    <button type="button" class="fmt-btn fmt-btn-mono" title="Block" onclick="insertSlackFormat('sdemo-edit-ta-${id}','fenced')">{ }</button>
+    <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-edit-ta-${id}','👍')">👍</button>
+    <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-edit-ta-${id}','✅')">✅</button>
+  </div>
+  <textarea id="sdemo-edit-ta-${id}" style="width:100%;border:1.5px solid #0070d2;border-radius:6px;padding:.5rem .7rem;font-family:inherit;font-size:.88rem;resize:vertical;outline:none;background:#fff;">${esc(current)}</textarea>
   <div style="display:flex;gap:.4rem;margin-top:.4rem;justify-content:flex-end;">
     <button onclick="sdemoCancelEdit('${id}','${esc(current)}')" style="padding:3px 10px;border:1.5px solid #e2ddd6;border-radius:6px;font-family:inherit;font-size:.78rem;cursor:pointer;background:none;">Cancel</button>
     <button onclick="sdemoSaveEdit('${id}')" style="padding:3px 10px;background:#0070d2;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:.78rem;cursor:pointer;">Save</button>
@@ -1436,13 +2375,13 @@ function sdemoRender() {
         </div>
         ${mine ? `<button onclick="sdemoOpenEdit('${q.id}')" style="font-size:.72rem;color:#b0aba4;background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 6px;border-radius:4px;">Edit</button>` : ''}
       </div>
-      <div id="sdemo-text-${q.id}" style="font-size:.88rem;line-height:1.55;margin-bottom:.45rem;">${esc(q.text)}</div>
+      <div class="rich-message" id="sdemo-text-${q.id}" style="font-size:.88rem;line-height:1.55;margin-bottom:.45rem;white-space:pre-wrap;word-break:break-word;">${formatRichMessage(q.text||'')}</div>
       ${(() => {
         const answers = q.answers && q.answers.length ? q.answers : (q.answer ? [{instructor:'Instructor',text:q.answer}] : []);
         return answers.map(a => `
           <div style="background:#e8f2fc;border-left:3px solid #0070d2;border-radius:0 6px 6px 0;padding:.5rem .75rem;margin-top:.4rem;">
             <div style="font-size:.65rem;font-weight:600;color:#0070d2;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem;">${esc(a.instructor||'Instructor')}</div>
-            <div style="font-size:.82rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${linkify(esc(a.text))}</div>
+            <div class="rich-message" style="font-size:.82rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${formatRichMessage(a.text)}</div>
           </div>`).join('');
       })()}
       <div style="margin-top:.45rem;">
@@ -1458,13 +2397,20 @@ function sdemoRender() {
 // patch resetDemo to also reset student view state and re-render if open
 // patch resetDemo to also reset student view state and re-render if open
 function resetDemo() {
-  allQuestions = DEMO_QUESTIONS_TEMPLATE.map(q => ({...q, voters: [...q.voters]}));
+  const qs = DEMO_QUESTIONS_TEMPLATE.map(q => ({...q, voters: [...q.voters]}));
+  questionPages = [{ questions: qs, endSnap: null }];
+  currentQuestionPage = 0;
+  hasMoreOlder = false;
+  const rs = document.getElementById('instr-questions-search');
+  if (rs) rs.value = '';
+  rebuildAllQuestions();
   allSessions = [DEMO_SESSION];
   activeSessionCode = DEMO_SESSION_CODE;
   sdemoUserId = 'demo-student-' + Math.random().toString(36).slice(2,8);
   renderSessionsList();
   renderQuestions();
   updateStats();
+  updateInstructorPaginationUi();
   fillSessionForm(DEMO_SESSION);
   document.getElementById('active-code').textContent = DEMO_SESSION_CODE;
   if (studentViewOpen) sdemoRender();
@@ -1472,11 +2418,154 @@ function resetDemo() {
 }
 // ── END STUDENT DEMO VIEW ───────────────────────
 
+function insertSlackFormat(textareaId, mode) {
+  const ta = document.getElementById(textareaId);
+  if (!ta) return;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const v = ta.value;
+  const sel = v.slice(start, end);
+  let ins, c0, c1;
+  if (mode === 'fenced') {
+    const openLen = '\n```\n'.length;
+    if (sel) {
+      ins = '\n```\n' + sel + '\n```\n';
+      c0 = start + openLen;
+      c1 = c0 + sel.length;
+    } else {
+      ins = '\n```\n\n```\n';
+      c0 = c1 = start + openLen;
+    }
+    ta.value = v.slice(0, start) + ins + v.slice(end);
+    ta.focus();
+    ta.setSelectionRange(c0, c1);
+    return;
+  }
+  let before, after, mid;
+  switch (mode) {
+    case 'bold': before = '*'; after = '*'; mid = sel || 'bold'; break;
+    case 'italic': before = '_'; after = '_'; mid = sel || 'italic'; break;
+    case 'strike': before = '~'; after = '~'; mid = sel || 'strikethrough'; break;
+    case 'code': before = '`'; after = '`'; mid = sel || 'code'; break;
+    default: return;
+  }
+  ins = before + mid + after;
+  ta.value = v.slice(0, start) + ins + v.slice(end);
+  ta.focus();
+  const ns = start + before.length;
+  const ne = ns + mid.length;
+  ta.setSelectionRange(ns, ne);
+}
+
+function insertEmoji(textareaId, ch) {
+  const ta = document.getElementById(textareaId);
+  if (!ta || ch == null) return;
+  ch = String(ch);
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const v = ta.value;
+  ta.value = v.slice(0, start) + ch + v.slice(end);
+  ta.focus();
+  const p = start + ch.length;
+  ta.setSelectionRange(p, p);
+}
+
+function closeFmtEmojiDetails(detailsId) {
+  const d = document.getElementById(detailsId);
+  if (d) d.open = false;
+}
+
+function instructorFormatToolbarAttrId(textareaId) {
+  return String(textareaId).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function instructorFormatToolbarHtml(textareaId) {
+  const safe = instructorFormatToolbarAttrId(textareaId);
+  return `<div class="format-toolbar format-toolbar--compact" data-fmt-target="${safe}" role="toolbar" aria-label="Insert formatting">
+    <span class="format-toolbar-label">Format</span>
+    <button type="button" class="fmt-btn fmt-btn-b" data-fmt="bold" title="Bold" aria-label="Bold"><strong>B</strong></button>
+    <button type="button" class="fmt-btn fmt-btn-i" data-fmt="italic" title="Italic" aria-label="Italic"><em>I</em></button>
+    <button type="button" class="fmt-btn fmt-btn-s" data-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><span style="text-decoration:line-through;">S</span></button>
+    <button type="button" class="fmt-btn fmt-btn-mono" data-fmt="code" title="Inline code" aria-label="Inline code">\`</button>
+    <button type="button" class="fmt-btn fmt-btn-mono" data-fmt="fenced" title="Code block" aria-label="Code block">{ }</button>
+    <span class="fmt-sep" aria-hidden="true"></span>
+    <button type="button" class="fmt-btn fmt-emoji" data-emoji="👍" title="Thumbs up">👍</button>
+    <button type="button" class="fmt-btn fmt-emoji" data-emoji="✅" title="Check">✅</button>
+    <button type="button" class="fmt-btn fmt-emoji" data-emoji="💡" title="Idea">💡</button>
+    <details class="fmt-emoji-more" onclick="event.stopPropagation()">
+      <summary class="fmt-more-summary" title="More emojis">⋯</summary>
+      <div class="fmt-emoji-grid">
+        <button type="button" class="fmt-btn fmt-emoji" data-emoji="🎉">🎉</button>
+        <button type="button" class="fmt-btn fmt-emoji" data-emoji="👏">👏</button>
+        <button type="button" class="fmt-btn fmt-emoji" data-emoji="❓">❓</button>
+        <button type="button" class="fmt-btn fmt-emoji" data-emoji="❤️">❤️</button>
+        <button type="button" class="fmt-btn fmt-emoji" data-emoji="🚀">🚀</button>
+      </div>
+    </details>
+  </div>`;
+}
+
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function linkify(text) {
+  return String(text).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all;">$1</a>');
+}
+/** Slack-style: *bold*, _italic_, ~strike~, `inline code`, fenced ``` blocks. Emojis OK. */
+function formatRichMessage(raw) {
+  var s = String(raw || '');
+  var chunks = [];
+  var PH = '\uFFF0';
+  var PH2 = '\uFFF1';
+  s = s.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, function (m, lang, code) {
+    var i = chunks.length;
+    chunks.push('<pre class="rich-pre"><code>' + esc(code) + '</code></pre>');
+    return PH + 'R' + i + PH2;
+  });
+  s = s.replace(/`([^`\n]+)`/g, function (m, code) {
+    var i = chunks.length;
+    chunks.push('<code class="rich-code">' + esc(code) + '</code>');
+    return PH + 'R' + i + PH2;
+  });
+  s = esc(s);
+  s = s.replace(/\*(?!\*)([\s\S]*?)\*(?!\*)/g, '<strong>$1</strong>');
+  s = s.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  s = s.replace(/~([^~\n]+)~/g, '<del>$1</del>');
+  s = linkify(s);
+  s = s.replace(/\uFFF0R(\d+)\uFFF1/g, function (m, n) {
+    return chunks[parseInt(n, 10)] || '';
+  });
+  return s;
+}
+function isHttpsUrl(u) { return !!u && /^https:\/\//i.test(String(u).trim()); }
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('signin-pin').addEventListener('keydown', e => { if (e.key==='Enter') instructorLogin(); });
   document.getElementById('reg-pin2').addEventListener('keydown', e => { if (e.key==='Enter') instructorRegister(); });
+  let instrSearchTimer = null;
+  const isSearch = document.getElementById('instr-questions-search');
+  if (isSearch) {
+    isSearch.addEventListener('input', () => {
+      clearTimeout(instrSearchTimer);
+      instrSearchTimer = setTimeout(() => {
+        renderQuestions();
+        updateInstructorPaginationUi();
+      }, 200);
+    });
+  }
+  const qListFmt = document.getElementById('questions-list');
+  if (qListFmt) {
+    qListFmt.addEventListener('click', function (e) {
+      const fmtBtn = e.target.closest('.format-toolbar[data-fmt-target] .fmt-btn[data-fmt]');
+      const emBtn = e.target.closest('.format-toolbar[data-fmt-target] .fmt-btn[data-emoji]');
+      if (!fmtBtn && !emBtn) return;
+      const bar = (fmtBtn || emBtn).closest('.format-toolbar[data-fmt-target]');
+      if (!bar) return;
+      const tid = bar.getAttribute('data-fmt-target');
+      if (!tid) return;
+      e.preventDefault();
+      if (fmtBtn) insertSlackFormat(tid, fmtBtn.getAttribute('data-fmt'));
+      else insertEmoji(tid, emBtn.getAttribute('data-emoji'));
+      const det = (fmtBtn || emBtn).closest('details');
+      if (det) det.open = false;
+    });
+  }
 });
 </script>
 </body>

@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Instructors self-register — PIN is stored hashed (SHA-256), never plain text
+    match /instructors/{instructorId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
+    }
+
+    // Sessions (instructor creates/updates class info + bulletin) and questions
+    match /sessions/{sessionId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+      match /questions/{questionId} {
+        allow read: if true;
+        allow create: if true;
+        // Updates keep authorId unchanged (votes, answers, status, student text edits).
+        allow update: if resource.data.authorId == request.resource.data.authorId;
+        // Instructors delete from the dashboard; without Firebase Auth this cannot be restricted to “only instructors”.
+        allow delete: if true;
+      }
+    }
+  }
+}

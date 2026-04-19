@@ -4,6 +4,8 @@
 - `student.html` — Student-facing Q&A board (share this URL with students)
 - `instructor.html` — Instructor dashboard (keep this URL private or share only with instructors)
 
+**Rich text (no extra Firebase setup):** Bulletin body, session sidebar (“Important”) note, questions, and answers support **Slack-style** markers in plain text (`*bold*`, `` `code` ``, fenced blocks, `https://` links). The app renders them in the browser; stored values are still normal strings on the session or question documents.
+
 ---
 
 ## Step 1: Firebase Setup (~15 minutes, free)
@@ -34,7 +36,14 @@
 
 ## Step 2: Firestore Security Rules
 
-In Firebase Console → Firestore → **Rules**, paste this:
+In Firebase Console → Firestore → **Rules**, replace the entire editor contents with the rules below.
+
+**Copy/paste checklist (fixes “Line 2: mismatched input `match`”):**
+
+1. The file **must** start with `rules_version = '2';` on line 1.
+2. Line **2** must be exactly `service cloud.firestore {` — do **not** start at `match /databases/...` or Firebase will reject the rules.
+3. Do **not** paste the Markdown backticks (`` ``` ``) from this doc—only the rules text.
+4. You can also open **`firestore.rules`** in this repo and copy everything from there (no Markdown).
 
 ```
 rules_version = '2';
@@ -45,27 +54,92 @@ service cloud.firestore {
     match /instructors/{instructorId} {
       allow read: if true;
       allow create: if true;
-      allow update, delete: if false;
+      allow update: if true;
+      allow delete: if false;
     }
 
-    // Sessions and questions
+    // Sessions (instructor creates/updates class info + bulletin) and questions
     match /sessions/{sessionId} {
       allow read: if true;
-      allow write: if false;
+      allow create, update: if true;
+      allow delete: if false;
       match /questions/{questionId} {
         allow read: if true;
         allow create: if true;
+        // Updates keep authorId unchanged (votes, answers, status, student text edits).
         allow update: if resource.data.authorId == request.resource.data.authorId;
-        allow delete: if false;
+        // Instructors delete from the dashboard; without Firebase Auth this cannot be restricted to “only instructors”.
+        allow delete: if true;
       }
     }
   }
 }
 ```
 
-> **Note:** Instructor writes (creating sessions, answering questions, deleting) bypass these
-> rules because the app calls Firestore directly from the browser. This is fine for internal use.
-> For a public-facing production app, consider adding Firebase Authentication.
+> **Security:** These rules are for **trusted / internal** use (e.g. a TDX room). Anyone with your
+> deployed `student.html` / `instructor.html` can call Firestore with your web API key, so a
+> motivated user could delete questions or change data unless you add **Firebase Authentication**
+> and tighten rules (e.g. only signed-in instructors may `delete` or update session docs).
+
+### Session bulletin (optional fields)
+
+Instructors can save a **live bulletin** on each session document. The app uses these fields if present (all optional):
+
+- `bulletinTitle` (string)
+- `bulletinBody` (string — may include Slack-style formatting; rendered client-side on the student board)
+- `bulletinImageUrls` (array of strings — only `https://` URLs are shown to students)
+- `bulletinUpdatedAt` (timestamp, set by the app when saving)
+
+Students read them via the same session read they already use; no extra rules are required beyond session read access.
+
+### Session sidebar note (“Important” for students)
+
+Optional fields on the same `sessions/{code}` document:
+
+- `sessionNoteShow` (boolean — default visible if omitted)
+- `sessionNoteTitle` (string)
+- `sessionNoteBody` (string — same Slack-style formatting as the bulletin body)
+- `sessionNoteImageUrls` (array of `https://` image URLs, one per line in the UI)
+
+### Question pagination
+
+Questions are loaded with `orderBy('createdAt', 'desc')` and a page size of **25**. If Firebase asks you to create an **index** the first time you run a session with questions, follow the link in the error dialog and create it.
+
+### Firebase Storage (paste screenshots)
+
+Pasting an image into the **student question** box or an **instructor answer** box uploads a JPEG to Cloud Storage under `sessions/{sessionCode}/…`. You must enable **Storage** in the Firebase console (same project as Firestore), then add **Rules** similar to:
+
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /sessions/{sessionId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.resource.size < 4 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
+```
+
+Tighten these rules (auth, App Check, smaller size) before a fully public launch. If Storage is disabled or rules deny the write, paste will show an error toast and nothing is stored.
+
+### Storage CORS (fixes localhost / browser upload errors)
+
+Browsers enforce **CORS** on your Firebase Storage bucket. If the console shows errors when **uploading** or **fetching** images from `http://127.0.0.1:…` or `http://localhost:…`, apply a CORS policy to the bucket.
+
+1. Install [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) so you have `gsutil`.
+2. In Firebase Console → **Project settings** → note your **Storage bucket** (e.g. `tdx-qa.firebasestorage.app` or `your-project.appspot.com`).
+3. Edit **`storage-cors.json`** in this repo: add your dev URLs (with the correct **port**) and your production site URL (e.g. `https://your-app.netlify.app`).
+4. Run (replace `YOUR_BUCKET` with the bucket name from step 2):
+
+```bash
+gsutil cors set storage-cors.json gs://YOUR_BUCKET
+```
+
+5. Wait a minute and hard-refresh the app. Re-try paste / image question.
+
+Without this step, uploads or `fetch()` to re-host images can fail even when Storage **rules** allow writes.
 
 ---
 

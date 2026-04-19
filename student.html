@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/firebase/firebase-app-compat.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase/firebase-firestore-compat.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-storage-compat.js" defer></script>
 <style>
   :root {
     --bg: #f7f6f3;
@@ -137,9 +138,16 @@
   .top-bar-right { display: flex; align-items: center; gap: 8px; }
   .leave-btn { font-size: 0.85rem; color: var(--text-muted); background: none; border: 1px solid var(--border); padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
   .leave-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn { font-size: 0.85rem; color: var(--accent); background: var(--accent-light); border: 1px solid var(--accent-light); padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .refresh-btn:hover { border-color: var(--accent); background: white; }
+  .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .app-layout { display: grid; grid-template-columns: 1fr 320px; min-height: calc(100vh - 56px); }
-  @media (max-width: 768px) { .app-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) {
+    .app-layout { grid-template-columns: 1fr; }
+    .side-col { order: -1; border-bottom: 1px solid var(--border); }
+    .main-col { border-right: none; }
+  }
 
   .main-col { padding: 1.5rem; border-right: 1px solid var(--border); }
 
@@ -154,10 +162,116 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem 1.5rem;
   }
+  .side-col .session-card {
+    margin-bottom: 0;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 1rem 1.1rem;
+  }
+  .side-col .session-card-title { font-size: 1rem; margin-bottom: 0.15rem; }
+  .side-col .session-meta { font-size: 0.8rem; }
+  .side-col .session-card-desc { font-size: 0.82rem; padding-top: 0.55rem; margin-top: 0.15rem; }
   .session-card-title { grid-column: 1 / -1; font-weight: 600; font-size: 1.1rem; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
   .session-card-desc { grid-column: 1 / -1; color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 0.75rem; }
   .session-meta { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-muted); }
   .session-meta svg { flex-shrink: 0; }
+
+  .bulletin-card {
+    background: linear-gradient(145deg, #eef6ff 0%, #fff 55%);
+    border: 1px solid var(--accent-light);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .bulletin-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 0.35rem; }
+  .bulletin-title { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.45rem; color: var(--text); }
+  .bulletin-body { font-size: 0.92rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+  .bulletin-images { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+  .bulletin-images img { max-width: 100%; max-height: 240px; border-radius: var(--radius-sm); object-fit: contain; border: 1px solid var(--border); background: var(--surface2); }
+
+  .session-note-wrap {
+    grid-column: 1 / -1;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+  .session-note-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+  }
+  .session-note-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+    line-height: 1.35;
+  }
+  .session-note-body {
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .session-note-images { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.55rem; }
+  .session-note-images img {
+    max-width: 100%;
+    max-height: 180px;
+    border-radius: var(--radius-sm);
+    object-fit: contain;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .questions-search-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0 0 0.85rem;
+  }
+  .questions-search-input {
+    flex: 1;
+    min-width: 12rem;
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.88rem;
+    background: white;
+    color: var(--text);
+    outline: none;
+  }
+  .questions-search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+  .load-more-row { text-align: center; margin: 1rem 0 0.25rem; }
+  .load-more-btn {
+    padding: 0.45rem 1.25rem;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    background: white;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .load-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .load-more-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .paste-preview-row { display: none; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; margin-top: 0.5rem; }
+  .paste-preview-row.has-images { display: flex; }
+  .paste-preview-item { position: relative; display: inline-block; }
+  .paste-preview-item img { display: block; max-height: 120px; max-width: min(100%, 280px); border-radius: var(--radius-sm); border: 1px solid var(--border); object-fit: contain; background: var(--surface2); }
+  .paste-preview-remove { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: var(--text); color: white; font-size: 0.85rem; line-height: 1; cursor: pointer; box-shadow: var(--shadow); }
+  .q-attached-images { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 0; }
+  .q-attached-images img { max-width: 100%; max-height: 220px; border-radius: var(--radius-sm); border: 1px solid var(--border); object-fit: contain; background: var(--surface2); }
 
   /* Ask box */
   .ask-box {
@@ -168,7 +282,89 @@
     margin-bottom: 1.5rem;
     box-shadow: var(--shadow);
   }
-  .ask-box-header { font-weight: 500; font-size: 0.95rem; margin-bottom: 1rem; }
+  .ask-box-header { font-weight: 500; font-size: 0.95rem; margin-bottom: 0.5rem; }
+
+  /* Slack-style insert toolbar */
+  .format-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 0.55rem;
+    /* Popover extends below the row; textarea is the next sibling and would paint on top without this. */
+    position: relative;
+    z-index: 10;
+  }
+  .format-toolbar-label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 2px;
+  }
+  .fmt-btn {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 7px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--text);
+    cursor: pointer;
+    line-height: 1;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .fmt-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .fmt-btn.fmt-btn-b { font-weight: 700; }
+  .fmt-btn.fmt-btn-i { font-style: italic; font-family: Georgia, 'Times New Roman', serif; }
+  .fmt-btn.fmt-btn-s { text-decoration: line-through; font-size: 0.78rem; }
+  .fmt-btn.fmt-btn-mono { font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.72rem; }
+  .fmt-btn.fmt-emoji { font-size: 1rem; min-width: 32px; padding: 0 4px; }
+  .fmt-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 2px;
+    flex-shrink: 0;
+  }
+  .fmt-emoji-more { position: relative; }
+  .fmt-emoji-more summary.fmt-more-summary {
+    list-style: none;
+    min-width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .fmt-emoji-more summary.fmt-more-summary::-webkit-details-marker { display: none; }
+  .fmt-emoji-more summary.fmt-more-summary:hover { border-color: var(--accent); color: var(--accent); }
+  .fmt-emoji-grid {
+    position: absolute;
+    z-index: 100;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+  }
+  .modal .format-toolbar { margin-top: 0.35rem; margin-bottom: 0.65rem; }
   .ask-box textarea {
     width: 100%;
     border: 1.5px solid var(--border);
@@ -221,12 +417,23 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-muted);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0;
     display: flex;
     align-items: center;
     gap: 8px;
   }
   .section-label span { background: var(--surface2); padding: 1px 8px; border-radius: 20px; font-size: 0.75rem; }
+
+  .questions-search-row .refresh-btn--compact {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    padding: 0.45rem 0.7rem;
+    line-height: 1.2;
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-sm);
+  }
 
   .q-card {
     background: var(--surface);
@@ -250,7 +457,48 @@
   .q-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
   .q-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .q-author { font-size: 0.8rem; font-weight: 500; color: var(--text-muted); }
-  .q-time { font-size: 0.78rem; color: var(--text-light); }
+  .q-time { font-size: 0.78rem; color: var(--text-light); white-space: nowrap; }
+  .q-text-muted { font-size: 0.88rem; color: var(--text-muted); font-style: italic; }
+  .q-pagination-num-wrap {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0.65rem 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.5rem;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+  }
+  .q-pagination-num-wrap.visible { display: flex; }
+  .pagination-nav-cluster {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .pagination-page-btn {
+    min-width: 2rem;
+    padding: 0.32rem 0.5rem;
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: white;
+    font-family: inherit;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .pagination-page-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pagination-page-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pagination-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .q-badge {
     font-size: 0.72rem;
     font-weight: 500;
@@ -263,6 +511,38 @@
   .badge-pinned { background: var(--pin-light); color: var(--pin); }
 
   .q-text { font-size: 0.95rem; line-height: 1.55; color: var(--text); margin-bottom: 0.5rem; }
+  .q-text-rich { white-space: pre-wrap; word-break: break-word; }
+  .rich-message strong { font-weight: 600; }
+  .rich-message em { font-style: italic; }
+  .rich-message del { text-decoration: line-through; opacity: 0.9; }
+  .rich-message .rich-code {
+    font-family: 'DM Mono', ui-monospace, monospace;
+    font-size: 0.88em;
+    background: var(--surface2);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .rich-message .rich-pre {
+    margin: 0.5rem 0;
+    padding: 0.65rem 0.85rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .rich-message .rich-pre code {
+    font-family: 'DM Mono', ui-monospace, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: block;
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
   .q-answer {
     background: var(--accent-light);
     border-left: 3px solid var(--accent);
@@ -272,24 +552,90 @@
     color: var(--text);
     line-height: 1.5;
     margin-top: 0.75rem;
+    position: relative;
+    z-index: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .q-answer-label { font-size: 0.75rem; font-weight: 500; color: var(--accent); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
-  .q-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 0.6rem; }
+  .q-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    padding-top: 0.35rem;
+    position: relative;
+    z-index: 2;
+  }
   .upvote-btn {
-    display: flex; align-items: center; gap: 5px;
-    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    min-width: 52px;
+    padding: 0.45rem 0.95rem;
     border: 1.5px solid var(--border);
-    border-radius: 20px;
+    border-radius: 22px;
     background: none;
     font-family: inherit;
-    font-size: 0.82rem;
+    font-size: 0.88rem;
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 112, 210, 0.12);
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+    z-index: 3;
+  }
+  .upvote-btn svg {
+    pointer-events: none;
+    flex-shrink: 0;
   }
   .upvote-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .upvote-btn:active { transform: scale(0.97); }
   .upvote-btn.upvoted { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .upvote-btn.loading {
+    opacity: 0.92;
+    pointer-events: none;
+  }
+  .upvote-btn.loading svg {
+    display: none;
+  }
+  .upvote-spinner {
+    display: none;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: upvote-spin 0.65s linear infinite;
+    vertical-align: middle;
+  }
+  .upvote-btn.loading .upvote-spinner {
+    display: inline-block;
+  }
+  .upvote-saving {
+    display: none;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .upvote-btn.loading .upvote-saving {
+    display: inline;
+    margin-left: 4px;
+  }
+  .upvote-count { display: inline; }
+  .upvote-btn.loading .upvote-count {
+    display: none;
+  }
+  @keyframes upvote-spin {
+    to { transform: rotate(360deg); }
+  }
   .q-edit-btn {
     font-size: 0.8rem; color: var(--text-light); background: none; border: none; cursor: pointer; font-family: inherit; padding: 4px 8px; border-radius: 4px;
     transition: color 0.15s;
@@ -298,7 +644,8 @@
 
   /* Sidebar */
   .side-col { padding: 1.5rem; background: var(--surface2); }
-  .side-section { margin-bottom: 2rem; }
+  .side-section { margin-bottom: 1.35rem; }
+  .side-section:last-child { margin-bottom: 0; }
   .side-title { font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.75rem; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .stat-card { background: white; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem; text-align: center; }
@@ -407,28 +754,47 @@
   <div class="app-layout">
     <!-- Main column -->
     <div class="main-col">
-      <!-- Session info -->
-      <div class="session-card" id="session-info-card">
-        <div class="session-card-title" id="si-title">Loading...</div>
-        <div class="session-meta" id="si-instructor">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span id="si-instructor-text">—</span>
-        </div>
-        <div class="session-meta" id="si-datetime">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span id="si-datetime-text">—</span>
-        </div>
-        <div class="session-meta">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          <span id="si-room-text">—</span>
-        </div>
-        <div class="session-card-desc" id="si-desc"></div>
+      <div class="bulletin-card" id="bulletin-card" style="display:none;">
+        <div class="bulletin-label">Instructor bulletin</div>
+        <div class="bulletin-title" id="bulletin-title"></div>
+        <div class="bulletin-body" id="bulletin-body"></div>
+        <div class="bulletin-images" id="bulletin-images"></div>
       </div>
 
       <!-- Ask box -->
       <div class="ask-box">
         <div class="ask-box-header">Ask a question</div>
+        <div class="format-toolbar" role="toolbar" aria-label="Insert formatting">
+          <span class="format-toolbar-label">Format</span>
+          <button type="button" class="fmt-btn fmt-btn-b" title="Bold (*text*)" aria-label="Bold" onclick="insertSlackFormat('q-text','bold')"><strong>B</strong></button>
+          <button type="button" class="fmt-btn fmt-btn-i" title="Italic (_text_)" aria-label="Italic" onclick="insertSlackFormat('q-text','italic')"><em>I</em></button>
+          <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough (~text~)" aria-label="Strikethrough" onclick="insertSlackFormat('q-text','strike')"><span style="text-decoration:line-through;">S</span></button>
+          <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code (`text`)" aria-label="Inline code" onclick="insertSlackFormat('q-text','code')">`</button>
+          <button type="button" class="fmt-btn fmt-btn-mono" title="Code block (triple backticks)" aria-label="Code block" onclick="insertSlackFormat('q-text','fenced')">{ }</button>
+          <span class="fmt-sep" aria-hidden="true"></span>
+          <button type="button" class="fmt-btn fmt-emoji" title="Thumbs up" aria-label="Insert thumbs up" onclick="insertEmoji('q-text','👍')">👍</button>
+          <button type="button" class="fmt-btn fmt-emoji" title="Clap" aria-label="Insert clap" onclick="insertEmoji('q-text','👏')">👏</button>
+          <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('q-text','✅')">✅</button>
+          <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('q-text','💡')">💡</button>
+          <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('q-text','❓')">❓</button>
+          <details class="fmt-emoji-more" id="q-text-emoji-more" onclick="event.stopPropagation()">
+            <summary class="fmt-more-summary" title="More emojis">⋯</summary>
+            <div class="fmt-emoji-grid" role="group" aria-label="More emojis">
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🎉');closeFmtEmojiDetails('q-text-emoji-more')">🎉</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','❤️');closeFmtEmojiDetails('q-text-emoji-more')">❤️</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','😊');closeFmtEmojiDetails('q-text-emoji-more')">😊</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🙏');closeFmtEmojiDetails('q-text-emoji-more')">🙏</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','⭐');closeFmtEmojiDetails('q-text-emoji-more')">⭐</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🔥');closeFmtEmojiDetails('q-text-emoji-more')">🔥</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','👀');closeFmtEmojiDetails('q-text-emoji-more')">👀</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','📌');closeFmtEmojiDetails('q-text-emoji-more')">📌</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','💬');closeFmtEmojiDetails('q-text-emoji-more')">💬</button>
+              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🚀');closeFmtEmojiDetails('q-text-emoji-more')">🚀</button>
+            </div>
+          </details>
+        </div>
         <textarea id="q-text" placeholder="What's on your mind? Ask anything about the session..." rows="3"></textarea>
+        <div id="q-image-previews" class="paste-preview-row" aria-live="polite"></div>
         <div class="ask-footer" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
           <label id="anon-toggle-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-size:0.85rem;color:var(--text-muted);">
             <div id="anon-toggle" onclick="toggleAnon()" style="width:36px;height:20px;border-radius:20px;background:var(--border);position:relative;transition:background 0.2s;flex-shrink:0;cursor:pointer;">
@@ -441,7 +807,12 @@
       </div>
 
       <!-- Questions -->
-      <div class="section-label">Questions <span id="q-count">0</span></div>
+      <div id="student-pagination-top" class="q-pagination-num-wrap" aria-label="Question pages"></div>
+      <div class="questions-search-row">
+        <input type="search" id="questions-search" class="questions-search-input" placeholder="Search questions…" autocomplete="off" aria-label="Search questions and answers" />
+        <button type="button" class="load-more-btn" onclick="clearStudentSearch()">Clear</button>
+        <button type="button" class="refresh-btn refresh-btn--compact" id="refresh-now-btn" onclick="studentRefreshNow()" title="Fetch the latest questions now">Refresh</button>
+      </div>
       <div id="filter-bar" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
         <button class="filter-btn" data-filter="pinned" onclick="setFilter('pinned',this)">Pinned</button>
@@ -454,10 +825,18 @@
           <p>No questions yet. Be the first to ask!</p>
         </div>
       </div>
+      <div id="student-pagination-bottom" class="q-pagination-num-wrap" aria-label="Question pages"></div>
     </div>
 
-    <!-- Sidebar -->
+    <!-- Sidebar: controls + session (main feed stays left) -->
     <div class="side-col">
+      <div class="side-section">
+        <div class="side-title">Sort by</div>
+        <div class="filter-btns">
+          <button class="filter-btn active" onclick="setSort('recent',this)">Most recent</button>
+          <button class="filter-btn" onclick="setSort('votes',this)">Most votes</button>
+        </div>
+      </div>
       <div class="side-section">
         <div class="side-title">Stats</div>
         <div class="stats-grid">
@@ -480,10 +859,28 @@
         </div>
       </div>
       <div class="side-section">
-        <div class="side-title">Sort by</div>
-        <div class="filter-btns">
-          <button class="filter-btn active" onclick="setSort('recent',this)">Most recent</button>
-          <button class="filter-btn" onclick="setSort('votes',this)">Most votes</button>
+        <div class="side-title">Session</div>
+        <div class="session-card" id="session-info-card">
+          <div class="session-card-title" id="si-title">Loading...</div>
+          <div class="session-meta" id="si-instructor" style="display:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span id="si-instructor-text"></span>
+          </div>
+          <div class="session-meta" id="si-datetime">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span id="si-datetime-text">—</span>
+          </div>
+          <div class="session-meta">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span id="si-room-text">—</span>
+          </div>
+          <div class="session-card-desc" id="si-desc"></div>
+          <div id="session-note-wrap" class="session-note-wrap" style="display:none;" aria-live="polite">
+            <div class="session-note-label">Important</div>
+            <div class="session-note-title" id="session-note-title"></div>
+            <div class="session-note-body" id="session-note-body"></div>
+            <div class="session-note-images" id="session-note-images"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -494,6 +891,35 @@
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
     <div class="modal-title">Edit your question</div>
+    <div class="format-toolbar" role="toolbar" aria-label="Insert formatting">
+      <span class="format-toolbar-label">Format</span>
+      <button type="button" class="fmt-btn fmt-btn-b" title="Bold (*text*)" aria-label="Bold" onclick="insertSlackFormat('edit-text','bold')"><strong>B</strong></button>
+      <button type="button" class="fmt-btn fmt-btn-i" title="Italic (_text_)" aria-label="Italic" onclick="insertSlackFormat('edit-text','italic')"><em>I</em></button>
+      <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough (~text~)" aria-label="Strikethrough" onclick="insertSlackFormat('edit-text','strike')"><span style="text-decoration:line-through;">S</span></button>
+      <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code (`text`)" aria-label="Inline code" onclick="insertSlackFormat('edit-text','code')">`</button>
+      <button type="button" class="fmt-btn fmt-btn-mono" title="Code block (triple backticks)" aria-label="Code block" onclick="insertSlackFormat('edit-text','fenced')">{ }</button>
+      <span class="fmt-sep" aria-hidden="true"></span>
+      <button type="button" class="fmt-btn fmt-emoji" title="Thumbs up" aria-label="Insert thumbs up" onclick="insertEmoji('edit-text','👍')">👍</button>
+      <button type="button" class="fmt-btn fmt-emoji" title="Clap" aria-label="Insert clap" onclick="insertEmoji('edit-text','👏')">👏</button>
+      <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('edit-text','✅')">✅</button>
+      <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('edit-text','💡')">💡</button>
+      <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('edit-text','❓')">❓</button>
+      <details class="fmt-emoji-more" id="edit-text-emoji-more" onclick="event.stopPropagation()">
+        <summary class="fmt-more-summary" title="More emojis">⋯</summary>
+        <div class="fmt-emoji-grid" role="group" aria-label="More emojis">
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🎉');closeFmtEmojiDetails('edit-text-emoji-more')">🎉</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','❤️');closeFmtEmojiDetails('edit-text-emoji-more')">❤️</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','😊');closeFmtEmojiDetails('edit-text-emoji-more')">😊</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🙏');closeFmtEmojiDetails('edit-text-emoji-more')">🙏</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','⭐');closeFmtEmojiDetails('edit-text-emoji-more')">⭐</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🔥');closeFmtEmojiDetails('edit-text-emoji-more')">🔥</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','👀');closeFmtEmojiDetails('edit-text-emoji-more')">👀</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','📌');closeFmtEmojiDetails('edit-text-emoji-more')">📌</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','💬');closeFmtEmojiDetails('edit-text-emoji-more')">💬</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🚀');closeFmtEmojiDetails('edit-text-emoji-more')">🚀</button>
+        </div>
+      </details>
+    </div>
     <textarea id="edit-text" style="width:100%;min-height:100px;padding:0.75rem;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;outline:none;"></textarea>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeEdit()">Cancel</button>
@@ -504,6 +930,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
 <script>
 // ══════════════════════════════════════════════
 //  FIREBASE CONFIG
@@ -518,9 +945,30 @@ const FIREBASE_CONFIG = {
 };
 // ══════════════════════════════════════════════
 
+const QUESTIONS_PAGE_SIZE = 25;
+const STUDENT_POLL_MS = 10000;
+
 let db, sessionCode, userName, userEmail, userId, currentSession;
 let allQuestions = [], currentFilter = 'all', currentSort = 'recent';
-let editingId = null, unsubSession, unsubQuestions;
+let editingId = null, unsubSession;
+let studentPollTimer = null;
+let studentPollSkipUntil = 0;
+let questionPages = [];
+let currentQuestionPage = 0;
+let hasMoreOlder = false, questionsLoading = false;
+let storage = null;
+const pendingQuestionImages = [];
+
+function clearPendingQuestionImages() {
+  pendingQuestionImages.forEach(function (row) {
+    if (row.blobUrl) try { URL.revokeObjectURL(row.blobUrl); } catch (e) {}
+  });
+  pendingQuestionImages.length = 0;
+  renderQuestionImagePreviews();
+}
+
+const IMAGE_MAX_EDGE = 1600;
+const IMAGE_JPEG_QUALITY = 0.82;
 
 function genId() { return Math.random().toString(36).slice(2,10); }
 
@@ -531,13 +979,17 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-function formatTime(ts) {
+function formatQuestionWhen(ts) {
   if (!ts) return '';
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const diff = Date.now() - d.getTime();
-  if (diff < 60000) return 'just now';
-  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
-  return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
 window.addEventListener('load', () => {
@@ -546,6 +998,7 @@ window.addEventListener('load', () => {
     try {
       firebase.initializeApp(FIREBASE_CONFIG);
       db = firebase.firestore();
+      if (firebase.storage) storage = firebase.storage();
     } catch(e) { console.warn('Firebase init failed:', e); }
   }
   userId = sessionStorage.getItem('tdx_uid') || genId();
@@ -578,25 +1031,33 @@ function showJoinError(msg) { document.getElementById('join-error').textContent 
 function enterApp() {
   document.getElementById('join-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
-  // set anonymous toggle — default anonymous if no name given, named if name given
   postAnonymously = (userName === 'Anonymous' || !userName);
   updateAnonToggle();
   renderSessionInfo(currentSession);
   document.getElementById('bar-session-name').textContent = currentSession.sessionName || currentSession.className || 'Session';
   document.getElementById('bar-code').textContent = sessionCode;
 
-  // live session info
+  questionPages = [];
+  currentQuestionPage = 0;
+  hasMoreOlder = false;
+  allQuestions = [];
+  var qsIn = document.getElementById('questions-search');
+  if (qsIn) qsIn.value = '';
+
   unsubSession = db.collection('sessions').doc(sessionCode).onSnapshot(snap => {
-    if (snap.exists) { currentSession = snap.data(); renderSessionInfo(snap.data()); }
+    if (snap.exists) {
+      currentSession = snap.data();
+      renderSessionInfo(snap.data());
+    }
   });
-  // live questions
-  unsubQuestions = db.collection('sessions').doc(sessionCode).collection('questions')
-    .orderBy('createdAt','desc')
-    .onSnapshot(snap => {
-      allQuestions = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      renderQuestions();
-      updateStats();
-    });
+
+  if (studentPollTimer) clearInterval(studentPollTimer);
+  clearPendingQuestionImages();
+  fetchStudentQuestionsFirstPage();
+  studentPollTimer = setInterval(function () {
+    if (Date.now() < studentPollSkipUntil) return;
+    fetchStudentQuestionsFirstPage();
+  }, STUDENT_POLL_MS);
 }
 
 let postAnonymously = true;
@@ -625,7 +1086,8 @@ function updateAnonToggle() {
 
 function leaveSession() {
   if (unsubSession) unsubSession();
-  if (unsubQuestions) unsubQuestions();
+  if (studentPollTimer) { clearInterval(studentPollTimer); studentPollTimer = null; }
+  clearPendingQuestionImages();
   postAnonymously = true;
   document.getElementById('join-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
@@ -636,21 +1098,592 @@ function leaveSession() {
 
 function renderSessionInfo(s) {
   document.getElementById('si-title').textContent = s.sessionName || s.className || '';
-  document.getElementById('si-instructor-text').textContent = s.instructorNames || '—';
+  var instRow = document.getElementById('si-instructor');
+  var instText = document.getElementById('si-instructor-text');
+  var fromArr = Array.isArray(s.instructors) ? s.instructors.map(function (x) { return String(x).trim(); }).filter(Boolean) : [];
+  var fromNames = (s.instructorNames || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  var label = fromArr.length ? fromArr.join(', ') : fromNames.join(', ');
+  if (label) {
+    instText.textContent = label;
+    instRow.style.display = '';
+  } else {
+    instText.textContent = '';
+    instRow.style.display = 'none';
+  }
   document.getElementById('si-datetime-text').textContent = [s.sessionDate, s.sessionTime].filter(Boolean).join(' · ') || '—';
   document.getElementById('si-room-text').textContent = s.room || '—';
   const desc = document.getElementById('si-desc');
   desc.textContent = s.description || '';
   desc.style.display = s.description ? '' : 'none';
+  renderBulletin(s);
+  renderSessionNote(s);
+}
+
+function renderSessionNote(s) {
+  var wrap = document.getElementById('session-note-wrap');
+  if (!wrap) return;
+  var allowed = (s.sessionNoteShow !== false);
+  var t = (s.sessionNoteTitle || '').trim();
+  var b = (s.sessionNoteBody || '').trim();
+  var urls = Array.isArray(s.sessionNoteImageUrls) ? s.sessionNoteImageUrls.filter(isHttpsUrl) : [];
+  if (!allowed || (!t && !b && !urls.length)) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  var titleEl = document.getElementById('session-note-title');
+  var bodyEl = document.getElementById('session-note-body');
+  var imgEl = document.getElementById('session-note-images');
+  titleEl.className = 'session-note-title rich-message';
+  titleEl.innerHTML = t ? formatRichMessage(t) : '';
+  titleEl.style.display = t ? '' : 'none';
+  bodyEl.className = 'session-note-body rich-message';
+  bodyEl.innerHTML = b ? formatRichMessage(b) : '';
+  bodyEl.style.display = b ? '' : 'none';
+  imgEl.innerHTML = urls.map(function (u) {
+    var safe = String(u).replace(/"/g, '');
+    return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+  }).join('');
+}
+
+function renderBulletin(s) {
+  const card = document.getElementById('bulletin-card');
+  const t = (s.bulletinTitle || '').trim();
+  const b = (s.bulletinBody || '').trim();
+  const urls = Array.isArray(s.bulletinImageUrls) ? s.bulletinImageUrls.filter(isHttpsUrl) : [];
+  if (!t && !b && !urls.length) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  document.getElementById('bulletin-title').className = 'bulletin-title rich-message';
+  document.getElementById('bulletin-title').innerHTML = t ? formatRichMessage(t) : '';
+  document.getElementById('bulletin-title').style.display = t ? '' : 'none';
+  document.getElementById('bulletin-body').className = 'bulletin-body rich-message';
+  document.getElementById('bulletin-body').innerHTML = b ? formatRichMessage(b) : '';
+  document.getElementById('bulletin-body').style.display = b ? '' : 'none';
+  const imgHost = document.getElementById('bulletin-images');
+  imgHost.innerHTML = urls.map(function (u) {
+    var safe = String(u).replace(/"/g, '');
+    return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+  }).join('');
+}
+
+function rebuildAllQuestions() {
+  var pg = questionPages[currentQuestionPage];
+  allQuestions = pg && pg.questions ? pg.questions.slice() : [];
+}
+
+function getAllCachedQuestionsForStats() {
+  var m = new Map();
+  questionPages.forEach(function (p) {
+    (p.questions || []).forEach(function (q) { m.set(q.id, q); });
+  });
+  return Array.from(m.values());
+}
+
+function findStudentQuestionById(id) {
+  var hit = allQuestions.find(function (x) { return x.id === id; });
+  if (hit) return hit;
+  return getAllCachedQuestionsForStats().find(function (x) { return x.id === id; });
+}
+
+function getQuestionSearchHaystack(q) {
+  var bits = [q.text, q.authorName];
+  var answers = q.answers && q.answers.length ? q.answers : (q.answer ? [{ text: q.answer, instructor: 'Instructor' }] : []);
+  for (var ai = 0; ai < answers.length; ai++) {
+    var a = answers[ai];
+    bits.push(a.text, a.instructor);
+    if (Array.isArray(a.imageUrls)) bits.push(a.imageUrls.join(' '));
+  }
+  return bits.filter(Boolean).join('\n');
+}
+
+function filterQuestionsBySearchQuery(corpus, query) {
+  var t = String(query || '').trim();
+  if (!t) return corpus.slice();
+  if (typeof Fuse !== 'undefined') {
+    var indexed = corpus.map(function (q) { return { q: q, _h: getQuestionSearchHaystack(q) }; });
+    var fuse = new Fuse(indexed, {
+      keys: ['_h'],
+      threshold: 0.42,
+      ignoreLocation: true
+    });
+    return fuse.search(t).map(function (r) { return r.item.q; });
+  }
+  var low = t.toLowerCase();
+  return corpus.filter(function (q) {
+    return getQuestionSearchHaystack(q).toLowerCase().indexOf(low) !== -1;
+  });
+}
+
+function getStudentSearchQuery() {
+  var el = document.getElementById('questions-search');
+  return el && el.value ? String(el.value).trim() : '';
+}
+
+function clearStudentSearch() {
+  var el = document.getElementById('questions-search');
+  if (el) el.value = '';
+  renderQuestions();
+  updateQuestionPaginationUi();
+}
+
+function fetchStudentQuestionsFirstPage() {
+  if (!db || !sessionCode) return Promise.resolve();
+  if (questionsLoading) return Promise.resolve();
+  if (currentQuestionPage !== 0) return Promise.resolve();
+  questionsLoading = true;
+  return db.collection('sessions').doc(sessionCode).collection('questions')
+    .orderBy('createdAt', 'desc')
+    .limit(QUESTIONS_PAGE_SIZE)
+    .get()
+    .then(function (snap) {
+      var questions = snap.docs.map(function (d) { return { id: d.id, ...d.data() }; });
+      var endSnap = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
+      questionPages[0] = { questions: questions, endSnap: endSnap };
+      if (questionPages.length > 1) questionPages.length = 1;
+      hasMoreOlder = snap.docs.length >= QUESTIONS_PAGE_SIZE;
+      rebuildAllQuestions();
+      renderQuestions();
+      updateStats();
+      updateQuestionPaginationUi();
+    })
+    .finally(function () { questionsLoading = false; });
+}
+
+function studentRefreshNow() {
+  if (!db || !sessionCode) return;
+  if (questionsLoading) {
+    showToast('Still loading—try again in a second.');
+    return;
+  }
+  currentQuestionPage = 0;
+  questionPages = [];
+  var btn = document.getElementById('refresh-now-btn');
+  if (btn) btn.disabled = true;
+  fetchStudentQuestionsFirstPage()
+    .then(function () { showToast('Board updated.'); })
+    .catch(function () { showToast('Could not refresh. Check your connection.'); })
+    .finally(function () { if (btn) btn.disabled = false; });
+}
+
+function goStudentOlderPage() {
+  if (!db || !sessionCode || questionsLoading) return;
+  var cur = questionPages[currentQuestionPage];
+  if (!cur || !cur.endSnap || cur.questions.length < QUESTIONS_PAGE_SIZE) return;
+  var nextIdx = currentQuestionPage + 1;
+  if (questionPages[nextIdx]) {
+    currentQuestionPage = nextIdx;
+    rebuildAllQuestions();
+    renderQuestions();
+    updateStats();
+    updateQuestionPaginationUi();
+    return;
+  }
+  questionsLoading = true;
+  db.collection('sessions').doc(sessionCode).collection('questions')
+    .orderBy('createdAt', 'desc')
+    .startAfter(cur.endSnap)
+    .limit(QUESTIONS_PAGE_SIZE)
+    .get()
+    .then(function (snap) {
+      var questions = snap.docs.map(function (d) { return { id: d.id, ...d.data() }; });
+      var endSnap = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
+      questionPages[nextIdx] = { questions: questions, endSnap: endSnap };
+      currentQuestionPage = nextIdx;
+      rebuildAllQuestions();
+      renderQuestions();
+      updateStats();
+      updateQuestionPaginationUi();
+    })
+    .finally(function () { questionsLoading = false; });
+}
+
+function goStudentToPage(zeroBased) {
+  if (zeroBased < 0 || zeroBased >= questionPages.length) return;
+  if (!questionPages[zeroBased]) return;
+  if (zeroBased === currentQuestionPage) return;
+  currentQuestionPage = zeroBased;
+  rebuildAllQuestions();
+  renderQuestions();
+  updateStats();
+  updateQuestionPaginationUi();
+  if (zeroBased === 0) fetchStudentQuestionsFirstPage();
+}
+
+function goStudentPreviousPage() {
+  if (currentQuestionPage <= 0) return;
+  goStudentToPage(currentQuestionPage - 1);
+}
+
+function goStudentNextPage() {
+  if (questionsLoading) return;
+  if (currentQuestionPage < questionPages.length - 1) {
+    goStudentToPage(currentQuestionPage + 1);
+    return;
+  }
+  goStudentOlderPage();
+}
+
+function buildStudentPaginationHtml() {
+  var numLoaded = questionPages.length;
+  if (!numLoaded) return '';
+  var cur = questionPages[currentQuestionPage];
+  var canPrev = currentQuestionPage > 0;
+  var canNextCached = currentQuestionPage < numLoaded - 1;
+  var canNextFetch = !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
+  var canNext = canNextCached || canNextFetch;
+  var lastPg = questionPages[numLoaded - 1];
+  var showPhantomNext = !!(lastPg && lastPg.endSnap && lastPg.questions.length >= QUESTIONS_PAGE_SIZE);
+  var totalSlots = numLoaded + (showPhantomNext ? 1 : 0);
+  var maxNums = 5;
+  var lo = 0;
+  var hi = totalSlots;
+  if (totalSlots > maxNums) {
+    var half = Math.floor(maxNums / 2);
+    lo = Math.max(0, Math.min(currentQuestionPage - half, totalSlots - maxNums));
+    hi = lo + maxNums;
+  }
+  var parts = [];
+  parts.push('<div class="pagination-nav-cluster">');
+  parts.push('<button type="button" class="load-more-btn student-p-prev"' + (canPrev ? '' : ' disabled') + ' onclick="goStudentPreviousPage()">Previous</button>');
+  for (var i = lo; i < hi; i++) {
+    var isAct = i === currentQuestionPage;
+    if (i < numLoaded) {
+      parts.push('<button type="button" class="pagination-page-btn' + (isAct ? ' active' : '') + '" onclick="goStudentToPage(' + i + ')">' + (i + 1) + '</button>');
+    } else {
+      parts.push('<button type="button" class="pagination-page-btn" title="Load older questions" aria-label="Go to page ' + (i + 1) + '" onclick="goStudentNextPage()">' + (i + 1) + '</button>');
+    }
+  }
+  parts.push('<button type="button" class="load-more-btn student-p-next"' + (canNext ? '' : ' disabled') + ' onclick="goStudentNextPage()">Next</button>');
+  parts.push('</div>');
+  return parts.join('');
+}
+
+function updateQuestionPaginationUi() {
+  var top = document.getElementById('student-pagination-top');
+  var bottom = document.getElementById('student-pagination-bottom');
+  if (!top || !bottom) return;
+  var searching = !!getStudentSearchQuery();
+  var showBar = !searching && !!(sessionCode && db && (questionPages[0] || currentQuestionPage > 0));
+  var html = showBar ? buildStudentPaginationHtml() : '';
+  top.innerHTML = html;
+  bottom.innerHTML = html;
+  top.classList.toggle('visible', showBar);
+  bottom.classList.toggle('visible', showBar);
+  top.style.display = showBar ? 'flex' : 'none';
+  bottom.style.display = showBar ? 'flex' : 'none';
+}
+
+function resizeImageToJpegBlob(file) {
+  return new Promise(function (resolve, reject) {
+    var img = new Image();
+    var u = URL.createObjectURL(file);
+    img.onload = function () {
+      URL.revokeObjectURL(u);
+      var w = img.width, h = img.height;
+      var scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(w, h, 1));
+      var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+      var c = document.createElement('canvas');
+      c.width = cw;
+      c.height = ch;
+      var ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, cw, ch);
+      c.toBlob(function (blob) {
+        if (blob) resolve(blob);
+        else reject(new Error('encode'));
+      }, 'image/jpeg', IMAGE_JPEG_QUALITY);
+    };
+    img.onerror = function () { URL.revokeObjectURL(u); reject(new Error('image')); };
+    img.src = u;
+  });
+}
+
+function collectImageFilesFromPaste(e) {
+  var out = [];
+  var cd = e.clipboardData;
+  if (!cd) return out;
+  if (cd.items && cd.items.length) {
+    for (var i = 0; i < cd.items.length; i++) {
+      var it = cd.items[i];
+      if (it.kind === 'file' && it.type && it.type.indexOf('image') === 0) {
+        var f = it.getAsFile();
+        if (f && f.size > 0) out.push(f);
+      }
+    }
+  }
+  if (!out.length && cd.files && cd.files.length) {
+    for (var j = 0; j < cd.files.length; j++) {
+      if (cd.files[j].type && cd.files[j].type.indexOf('image') === 0 && cd.files[j].size > 0) out.push(cd.files[j]);
+    }
+  }
+  return out;
+}
+
+function normalizeClipboardImageHttps(src) {
+  var s = String(src || '').trim();
+  if (!s) return '';
+  if (s.indexOf('//') === 0) s = 'https:' + s;
+  return s;
+}
+
+function looksLikeImageUrl(u) {
+  var s = String(u || '').toLowerCase();
+  if (!s || s.indexOf('data:') === 0) return false;
+  if (/\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)(\?|#|$)/i.test(s)) return true;
+  if (s.indexOf('gstatic.com') >= 0) return true;
+  if (s.indexOf('googleusercontent.com') >= 0) return true;
+  if (s.indexOf('ggpht.com') >= 0) return true;
+  if (s.indexOf('twimg.com') >= 0) return true;
+  if (s.indexOf('cdn.') >= 0 && /\/(image|img|photo|media)\//i.test(s)) return true;
+  return false;
+}
+
+function extractImageSrcFromUriListPaste(e) {
+  var cd = e.clipboardData;
+  if (!cd) return '';
+  var raw = (cd.getData('text/uri-list') || '').trim();
+  if (!raw) return '';
+  var u = raw.split(/\r?\n/)[0].trim();
+  if (u.indexOf('file:') === 0) return '';
+  u = normalizeClipboardImageHttps(u);
+  return isHttpsUrl(u) && looksLikeImageUrl(u) ? u : '';
+}
+
+function extractImageSrcFromPlainPaste(e) {
+  var cd = e.clipboardData;
+  if (!cd) return '';
+  var t = (cd.getData('text/plain') || '').trim();
+  if (!t || t.length > 12000) return '';
+  var lines = t.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var m = line.match(/^https:\/\/[^\s<>"']+$/);
+    if (!m) continue;
+    var u = normalizeClipboardImageHttps(m[0]);
+    if (isHttpsUrl(u) && looksLikeImageUrl(u)) return u;
+  }
+  return '';
+}
+
+function extractImageSrcFromHtmlPaste(e) {
+  var cd = e.clipboardData;
+  if (!cd) return '';
+  var html = cd.getData('text/html');
+  if (!html || !html.trim()) return '';
+  try {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var imgs = doc.querySelectorAll('img[src]');
+    for (var i = 0; i < imgs.length; i++) {
+      var src = (imgs[i].getAttribute('src') || '').trim();
+      if (!src || src.indexOf('data:') === 0) continue;
+      src = normalizeClipboardImageHttps(src);
+      if (isHttpsUrl(src)) return src;
+    }
+    return '';
+  } catch (er) { return ''; }
+}
+
+function extractImageUrlForQuestionPaste(e, hasFiles) {
+  if (hasFiles) return '';
+  return extractImageSrcFromHtmlPaste(e) || extractImageSrcFromUriListPaste(e) || extractImageSrcFromPlainPaste(e);
+}
+
+function uploadStudentQuestionImage(jpegBlob) {
+  if (!storage || !sessionCode) return Promise.reject(new Error('no storage'));
+  var path = 'sessions/' + sessionCode + '/question_paste/' + userId + '_' + Date.now() + '_' + genId() + '.jpg';
+  return storage.ref(path).put(jpegBlob, { contentType: 'image/jpeg' }).then(function (snap) { return snap.ref.getDownloadURL(); });
+}
+
+function renderQuestionImagePreviews() {
+  var wrap = document.getElementById('q-image-previews');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!pendingQuestionImages.length) {
+    wrap.classList.remove('has-images');
+    return;
+  }
+  wrap.classList.add('has-images');
+  pendingQuestionImages.forEach(function (row) {
+    var span = document.createElement('span');
+    span.className = 'paste-preview-item';
+    span.dataset.pid = row.pid;
+    var img = document.createElement('img');
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.src = row.blobUrl || row.url || '';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'paste-preview-remove';
+    btn.setAttribute('aria-label', 'Remove image');
+    btn.textContent = '×';
+    btn.onclick = function () { removePendingQuestionImage(row.pid); };
+    span.appendChild(img);
+    span.appendChild(btn);
+    wrap.appendChild(span);
+  });
+}
+
+function removePendingQuestionImage(pid) {
+  var i = pendingQuestionImages.findIndex(function (r) { return r.pid === pid; });
+  if (i < 0) return;
+  var row = pendingQuestionImages[i];
+  if (row.blobUrl) try { URL.revokeObjectURL(row.blobUrl); } catch (e) {}
+  pendingQuestionImages.splice(i, 1);
+  renderQuestionImagePreviews();
+}
+
+function onQuestionTextPaste(e) {
+  if (!sessionCode) return;
+  var files = collectImageFilesFromPaste(e);
+  var htmlSrc = extractImageUrlForQuestionPaste(e, files.length > 0);
+  if (!files.length && !htmlSrc) return;
+
+  if (!storage) {
+    if (htmlSrc) {
+      e.preventDefault();
+      pendingQuestionImages.push({ pid: genId() + genId(), url: htmlSrc, blobUrl: '' });
+      renderQuestionImagePreviews();
+      showToast('Image link added (Firebase Storage not active—this uses the original URL).');
+      return;
+    }
+    showToast('Image paste needs Firebase Storage enabled in your project.');
+    return;
+  }
+
+  e.preventDefault();
+
+  (async function () {
+    if (files.length) {
+      for (var k = 0; k < files.length; k++) {
+        var pid = genId() + '_' + Date.now() + '_' + k;
+        pendingQuestionImages.push({ pid: pid, url: '', blobUrl: '', uploading: true });
+        renderQuestionImagePreviews();
+        try {
+          showToast('Uploading image…');
+          var jpegBlob = await resizeImageToJpegBlob(files[k]);
+          var blobUrl = URL.createObjectURL(jpegBlob);
+          var idx0 = pendingQuestionImages.findIndex(function (r) { return r.pid === pid; });
+          if (idx0 >= 0) {
+            pendingQuestionImages[idx0] = { pid: pid, url: '', blobUrl: blobUrl, uploading: false };
+          }
+          renderQuestionImagePreviews();
+          var url = await uploadStudentQuestionImage(jpegBlob);
+          var idx = pendingQuestionImages.findIndex(function (r) { return r.pid === pid; });
+          if (idx >= 0) {
+            try { URL.revokeObjectURL(pendingQuestionImages[idx].blobUrl); } catch (er) {}
+            pendingQuestionImages[idx] = { pid: pid, url: url, blobUrl: '' };
+          }
+          renderQuestionImagePreviews();
+          showToast('Image attached. Add text or submit.');
+        } catch (err) {
+          console.warn(err);
+          var idx2 = pendingQuestionImages.findIndex(function (r) { return r.pid === pid; });
+          if (idx2 >= 0) {
+            try { URL.revokeObjectURL(pendingQuestionImages[idx2].blobUrl); } catch (er2) {}
+            pendingQuestionImages.splice(idx2, 1);
+          }
+          renderQuestionImagePreviews();
+          showToast('Upload failed: ' + (err && err.message ? err.message : 'check Storage rules in SETUP.md'));
+        }
+      }
+      return;
+    }
+
+    if (htmlSrc) {
+      var pid2 = genId() + '_' + Date.now();
+      pendingQuestionImages.push({ pid: pid2, url: htmlSrc, blobUrl: '' });
+      renderQuestionImagePreviews();
+      showToast('Uploading image…');
+      try {
+        var r = await fetch(htmlSrc, { mode: 'cors' });
+        if (!r.ok) throw new Error('Could not download image (site blocked copy). Try right-click → Copy image.');
+        var blob0 = await r.blob();
+        var jpeg2 = await resizeImageToJpegBlob(blob0);
+        var url2 = await uploadStudentQuestionImage(jpeg2);
+        var ix = pendingQuestionImages.findIndex(function (r) { return r.pid === pid2; });
+        if (ix >= 0) {
+          pendingQuestionImages[ix] = { pid: pid2, url: url2, blobUrl: '' };
+        }
+        renderQuestionImagePreviews();
+        showToast('Image attached. Add text or submit.');
+      } catch (err) {
+        console.warn(err);
+        var ixF = pendingQuestionImages.findIndex(function (r) { return r.pid === pid2; });
+        if (ixF >= 0) {
+          renderQuestionImagePreviews();
+          showToast('Using image link (download or upload was blocked). Submit to attach.');
+        }
+      }
+    }
+  })();
+}
+
+function normalizeQuestionImageUrls(q) {
+  var raw = q.imageUrls;
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(function (u) { return String(u).trim(); }).filter(isHttpsUrl);
+  }
+  if (typeof raw === 'string') return isHttpsUrl(raw) ? [raw.trim()] : [];
+  if (typeof raw === 'object') {
+    return Object.keys(raw).sort().map(function (k) { return raw[k]; }).map(function (u) { return String(u).trim(); }).filter(isHttpsUrl);
+  }
+  return [];
+}
+
+function htmlQuestionAttachedImages(q) {
+  var urls = normalizeQuestionImageUrls(q);
+  if (!urls.length) return '';
+  return '<div class="q-attached-images">' + urls.map(function (u) {
+    var safe = String(u).replace(/"/g, '');
+    return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+  }).join('') + '</div>';
+}
+
+function isImageOnlyPlaceholderText(text) {
+  var t = (text || '').trim().toLowerCase();
+  return t === '(image)' || t === '(photo)';
+}
+
+function htmlQuestionBody(q) {
+  var urls = normalizeQuestionImageUrls(q);
+  var rawText = q.text || '';
+  if (!String(rawText).trim() && urls.length) return '';
+  if (isImageOnlyPlaceholderText(rawText) && urls.length) return '';
+  if (isImageOnlyPlaceholderText(rawText) && !urls.length) {
+    return '<div class="q-text q-text-rich q-text-muted">No image was saved—wait for the upload to finish before you submit, then try again.</div>';
+  }
+  if (!String(rawText).trim()) return '';
+  return '<div class="q-text q-text-rich rich-message">' + formatRichMessage(rawText) + '</div>';
 }
 
 function submitQuestion() {
-  const text = document.getElementById('q-text').value.trim();
-  if (!text) return;
+  let text = document.getElementById('q-text').value.trim();
+  if (!text && !pendingQuestionImages.length) return;
+  if (pendingQuestionImages.some(function (r) { return !r.url; })) {
+    showToast('Wait for images to finish uploading, then submit.');
+    return;
+  }
   const displayName = postAnonymously ? 'Anonymous' : (userName && userName !== 'Anonymous' ? userName : 'Anonymous');
   document.getElementById('submit-btn').disabled = true;
-  db.collection('sessions').doc(sessionCode).collection('questions').add({
-    text,
+  const imageUrls = pendingQuestionImages.map(function (r) { return r.url; }).filter(Boolean);
+  imageUrls.forEach(function (u) {
+    if (!u) return;
+    var re = new RegExp(u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    text = text.replace(re, '').replace(/\n{3,}/g, '\n\n').trim();
+  });
+  if (pendingQuestionImages.length && imageUrls.length !== pendingQuestionImages.length) {
+    document.getElementById('submit-btn').disabled = false;
+    showToast('Wait for all images to finish uploading, then submit again.');
+    return;
+  }
+  var textOut = text.trim();
+  if (!textOut && imageUrls.length) textOut = '';
+  else if (!textOut && !imageUrls.length) textOut = '(Image)';
+  var payload = {
+    text: textOut,
     authorName: displayName || 'Anonymous',
     authorEmail: '',
     authorId: userId,
@@ -660,14 +1693,19 @@ function submitQuestion() {
     votes: 0,
     voters: [],
     answer: ''
-  }).then(docRef => {
-    // store this question ID so only this student can edit it
+  };
+  if (imageUrls.length) payload.imageUrls = imageUrls;
+  db.collection('sessions').doc(sessionCode).collection('questions').add(payload).then(docRef => {
     const myQs = JSON.parse(sessionStorage.getItem('tdx_my_questions') || '[]');
     myQs.push(docRef.id);
     sessionStorage.setItem('tdx_my_questions', JSON.stringify(myQs));
     document.getElementById('q-text').value = '';
+    clearPendingQuestionImages();
     document.getElementById('submit-btn').disabled = false;
     showToast('Question submitted!');
+    currentQuestionPage = 0;
+    questionPages = [];
+    fetchStudentQuestionsFirstPage();
   }).catch(() => { document.getElementById('submit-btn').disabled = false; });
 }
 
@@ -676,20 +1714,48 @@ function isMyQuestion(id) {
   return myQs.includes(id);
 }
 
+var studentUpvoteLocks = {};
+
 function toggleUpvote(id) {
-  const q = allQuestions.find(x => x.id === id);
-  if (!q) return;
+  if (!db || !sessionCode) {
+    showToast('Not connected. Try refreshing the page.');
+    return;
+  }
+  if (!id || studentUpvoteLocks[id]) return;
+  const q = findStudentQuestionById(id);
+  if (!q) {
+    showToast('That question is not on this page anymore.');
+    return;
+  }
+  studentPollSkipUntil = Date.now() + 1600;
   const voters = q.voters || [];
   const ref = db.collection('sessions').doc(sessionCode).collection('questions').doc(id);
-  if (voters.includes(userId)) {
-    ref.update({ votes: firebase.firestore.FieldValue.increment(-1), voters: firebase.firestore.FieldValue.arrayRemove(userId) });
-  } else {
-    ref.update({ votes: firebase.firestore.FieldValue.increment(1), voters: firebase.firestore.FieldValue.arrayUnion(userId) });
-  }
+  studentUpvoteLocks[id] = true;
+  renderQuestions();
+  var payload = voters.includes(userId)
+    ? { votes: firebase.firestore.FieldValue.increment(-1), voters: firebase.firestore.FieldValue.arrayRemove(userId) }
+    : { votes: firebase.firestore.FieldValue.increment(1), voters: firebase.firestore.FieldValue.arrayUnion(userId) };
+  ref.update(payload)
+    .then(function () {
+      return new Promise(function (resolve) {
+        setTimeout(resolve, 400);
+      });
+    })
+    .then(function () {
+      return fetchStudentQuestionsFirstPage();
+    })
+    .catch(function (err) {
+      showToast((err && err.message) ? err.message : 'Could not update vote. Check your connection.');
+    })
+    .finally(function () {
+      delete studentUpvoteLocks[id];
+      renderQuestions();
+      updateStats();
+    });
 }
 
 function openEdit(id) {
-  const q = allQuestions.find(x => x.id === id);
+  const q = findStudentQuestionById(id);
   if (!q) return;
   editingId = id;
   document.getElementById('edit-text').value = q.text;
@@ -700,7 +1766,11 @@ function saveEdit() {
   const text = document.getElementById('edit-text').value.trim();
   if (!text || !editingId) return;
   if (!isMyQuestion(editingId)) { showToast('You can only edit your own questions.'); closeEdit(); return; }
-  db.collection('sessions').doc(sessionCode).collection('questions').doc(editingId).update({ text }).then(() => { closeEdit(); showToast('Question updated.'); });
+  db.collection('sessions').doc(sessionCode).collection('questions').doc(editingId).update({ text }).then(() => {
+    closeEdit();
+    showToast('Question updated.');
+    fetchStudentQuestionsFirstPage();
+  });
 }
 
 function setFilter(f, btn) {
@@ -718,7 +1788,9 @@ function setSort(s, btn) {
 }
 
 function renderQuestions() {
-  let qs = [...allQuestions];
+  var searchQ = getStudentSearchQuery();
+  var corpus = getAllCachedQuestionsForStats();
+  let qs = searchQ ? filterQuestionsBySearchQuery(corpus, searchQ) : [...allQuestions];
   if (currentFilter === 'pinned') qs = qs.filter(q => q.pinned);
   if (currentFilter === 'answered') qs = qs.filter(q => q.status === 'answered');
   if (currentFilter === 'unanswered') qs = qs.filter(q => q.status !== 'answered');
@@ -731,15 +1803,18 @@ function renderQuestions() {
     const bt = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
     return bt - at;
   });
-  document.getElementById('q-count').textContent = qs.length;
   const list = document.getElementById('questions-list');
   if (!qs.length) {
-    list.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><p>No questions here yet.</p></div>';
+    var emptyMsg = searchQ
+      ? 'No matches in loaded questions. Load more pages or clear the search.'
+      : 'No questions here yet.';
+    list.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><p>' + emptyMsg + '</p></div>';
     return;
   }
   list.innerHTML = qs.map(q => {
     const mine = isMyQuestion(q.id);
     const voted = (q.voters||[]).includes(userId);
+    const voting = !!studentUpvoteLocks[q.id];
     const badges = [];
     if (q.pinned) badges.push('<span class="q-badge badge-pinned">Pinned</span>');
     if (q.status === 'answered') badges.push('<span class="q-badge badge-answered">Answered</span>');
@@ -749,25 +1824,32 @@ function renderQuestions() {
       <div class="q-card-header">
         <div class="q-meta">
           <span class="q-author">${esc(q.authorName||'Anonymous')}</span>
-          <span class="q-time">${formatTime(q.createdAt)}</span>
+          <span class="q-time" title="Posted time">${formatQuestionWhen(q.createdAt)}</span>
           ${badges.join('')}
         </div>
         ${mine ? `<button class="q-edit-btn" onclick="openEdit('${q.id}')">Edit</button>` : ''}
       </div>
-      <div class="q-text">${esc(q.text)}</div>
+      ${htmlQuestionBody(q)}
+      ${htmlQuestionAttachedImages(q)}
       ${(() => {
         const answers = q.answers && q.answers.length ? q.answers : (q.answer ? [{ instructor: 'Instructor', text: q.answer }] : []);
         if (!answers.length) return '';
         return answers.map(a => `
           <div class="q-answer">
             <div class="q-answer-label">${esc(a.instructor||'Instructor')}</div>
-            <div style="white-space:pre-wrap;word-break:break-word;">${linkify(esc(a.text))}</div>
+            <div class="rich-message" style="white-space:pre-wrap;word-break:break-word;">${formatRichMessage(a.text||'')}</div>
+            ${(Array.isArray(a.imageUrls) && a.imageUrls.length) ? '<div class="q-attached-images">' + a.imageUrls.filter(isHttpsUrl).map(function (u) {
+              var safe = String(u).replace(/"/g, '');
+              return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+            }).join('') + '</div>' : ''}
           </div>`).join('');
       })()}
       <div class="q-footer">
-        <button class="upvote-btn ${voted?'upvoted':''}" onclick="toggleUpvote('${q.id}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="${voted?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          ${q.votes||0}
+        <button type="button" class="upvote-btn ${voted?'upvoted':''}${voting?' loading':''}" data-qid="${esc(q.id)}" aria-label="${voting?'Saving vote…':'Upvote'}" aria-busy="${voting?'true':'false'}"${voting?' disabled':''}>
+          <span class="upvote-spinner" aria-hidden="true"></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="${voted?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <span class="upvote-saving">Saving…</span>
+          <span class="upvote-count">${q.votes||0}</span>
         </button>
       </div>
     </div>`;
@@ -775,20 +1857,128 @@ function renderQuestions() {
 }
 
 function updateStats() {
-  const qs = allQuestions;
+  const qs = getAllCachedQuestionsForStats();
   document.getElementById('stat-total').textContent = qs.length;
+  updateQuestionPaginationUi();
   document.getElementById('stat-answered').textContent = qs.filter(q=>q.status==='answered').length;
   document.getElementById('stat-pending').textContent = qs.filter(q=>q.status==='pending').length;
   document.getElementById('stat-pinned').textContent = qs.filter(q=>q.pinned).length;
 }
 
+function insertSlackFormat(textareaId, mode) {
+  var ta = document.getElementById(textareaId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var v = ta.value;
+  var sel = v.slice(start, end);
+  var ins, c0, c1;
+  if (mode === 'fenced') {
+    var openLen = '\n```\n'.length;
+    if (sel) {
+      ins = '\n```\n' + sel + '\n```\n';
+      c0 = start + openLen;
+      c1 = c0 + sel.length;
+    } else {
+      ins = '\n```\n\n```\n';
+      c0 = c1 = start + openLen;
+    }
+    ta.value = v.slice(0, start) + ins + v.slice(end);
+    ta.focus();
+    ta.setSelectionRange(c0, c1);
+    return;
+  }
+  var before, after, mid;
+  switch (mode) {
+    case 'bold': before = '*'; after = '*'; mid = sel || 'bold'; break;
+    case 'italic': before = '_'; after = '_'; mid = sel || 'italic'; break;
+    case 'strike': before = '~'; after = '~'; mid = sel || 'strikethrough'; break;
+    case 'code': before = '`'; after = '`'; mid = sel || 'code'; break;
+    default: return;
+  }
+  ins = before + mid + after;
+  ta.value = v.slice(0, start) + ins + v.slice(end);
+  ta.focus();
+  var ns = start + before.length;
+  var ne = ns + mid.length;
+  ta.setSelectionRange(ns, ne);
+}
+
+function insertEmoji(textareaId, ch) {
+  var ta = document.getElementById(textareaId);
+  if (!ta || ch == null) return;
+  ch = String(ch);
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var v = ta.value;
+  ta.value = v.slice(0, start) + ch + v.slice(end);
+  ta.focus();
+  var p = start + ch.length;
+  ta.setSelectionRange(p, p);
+}
+
+function closeFmtEmojiDetails(detailsId) {
+  var d = document.getElementById(detailsId);
+  if (d) d.open = false;
+}
+
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function linkify(text) { return text.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all;">$1</a>'); }
+/** Slack-style: *bold*, _italic_, ~strike~, `inline code`, ```fenced code```. Emojis pass through. HTML escaped; links auto-linked after formatting. */
+function formatRichMessage(raw) {
+  var s = String(raw || '');
+  var chunks = [];
+  var PH = '\uFFF0';
+  var PH2 = '\uFFF1';
+  s = s.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, function (m, lang, code) {
+    var i = chunks.length;
+    chunks.push('<pre class="rich-pre"><code>' + esc(code) + '</code></pre>');
+    return PH + 'R' + i + PH2;
+  });
+  s = s.replace(/`([^`\n]+)`/g, function (m, code) {
+    var i = chunks.length;
+    chunks.push('<code class="rich-code">' + esc(code) + '</code>');
+    return PH + 'R' + i + PH2;
+  });
+  s = esc(s);
+  s = s.replace(/\*(?!\*)([\s\S]*?)\*(?!\*)/g, '<strong>$1</strong>');
+  s = s.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  s = s.replace(/~([^~\n]+)~/g, '<del>$1</del>');
+  s = linkify(s);
+  s = s.replace(/\uFFF0R(\d+)\uFFF1/g, function (m, n) {
+    return chunks[parseInt(n, 10)] || '';
+  });
+  return s;
+}
+function isHttpsUrl(u) { return !!u && /^https:\/\//i.test(String(u).trim()); }
 
 // Enter key on code input
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('code-input').addEventListener('keydown', e => { if (e.key==='Enter') joinSession(); });
   document.getElementById('code-input').addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+  var qt = document.getElementById('q-text');
+  if (qt) qt.addEventListener('paste', onQuestionTextPaste);
+  var qListHost = document.getElementById('questions-list');
+  if (qListHost && !qListHost.dataset.upvoteDelegate) {
+    qListHost.dataset.upvoteDelegate = '1';
+    qListHost.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('.upvote-btn');
+      if (!btn) return;
+      var id = btn.getAttribute('data-qid');
+      if (id == null || id === '') return;
+      e.preventDefault();
+      toggleUpvote(id);
+    }, true);
+  }
+  var studentSearchTimer = null;
+  var qSearch = document.getElementById('questions-search');
+  if (qSearch) {
+    qSearch.addEventListener('input', function () {
+      clearTimeout(studentSearchTimer);
+      studentSearchTimer = setTimeout(function () {
+        renderQuestions();
+        updateQuestionPaginationUi();
+      }, 200);
+    });
+  }
 });
 </script>
 </body>
