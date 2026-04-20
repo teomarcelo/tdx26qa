@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TDX Q&A — Student</title>
+<title>Session Q&A — Student</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/firebase/firebase-app-compat.js" defer></script>
@@ -176,19 +176,6 @@
   .session-meta { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-muted); }
   .session-meta svg { flex-shrink: 0; }
 
-  .bulletin-card {
-    background: linear-gradient(145deg, #eef6ff 0%, #fff 55%);
-    border: 1px solid var(--accent-light);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 1.25rem;
-  }
-  .bulletin-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 0.35rem; }
-  .bulletin-title { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.45rem; color: var(--text); }
-  .bulletin-body { font-size: 0.92rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; word-break: break-word; }
-  .bulletin-images { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
-  .bulletin-images img { max-width: 100%; max-height: 240px; border-radius: var(--radius-sm); object-fit: contain; border: 1px solid var(--border); background: var(--surface2); }
-
   .session-note-wrap {
     grid-column: 1 / -1;
     margin-top: 0.5rem;
@@ -291,9 +278,23 @@
     align-items: center;
     gap: 5px;
     margin-bottom: 0.55rem;
-    /* Popover extends below the row; textarea is the next sibling and would paint on top without this. */
+    /* Emoji picker positions below ⋯ by default; flips above when needed (see positionFmtEmojiMore). */
     position: relative;
     z-index: 10;
+  }
+  .format-toolbar:has(details.fmt-emoji-more[open]) {
+    z-index: 600;
+  }
+  .ask-box:has(details.fmt-emoji-more[open]) .format-toolbar ~ #q-text,
+  .ask-box:has(details.fmt-emoji-more[open]) .format-toolbar ~ #q-image-previews,
+  .ask-box:has(details.fmt-emoji-more[open]) .format-toolbar ~ .ask-footer {
+    position: relative;
+    z-index: 0;
+  }
+  .modal:has(details.fmt-emoji-more[open]) .format-toolbar ~ #edit-text,
+  .modal:has(details.fmt-emoji-more[open]) .format-toolbar ~ .modal-footer {
+    position: relative;
+    z-index: 0;
   }
   .format-toolbar-label {
     font-size: 0.72rem;
@@ -330,7 +331,8 @@
     margin: 0 2px;
     flex-shrink: 0;
   }
-  .fmt-emoji-more { position: relative; }
+  .fmt-emoji-more { position: relative; z-index: 0; }
+  .fmt-emoji-more[open] { z-index: 620; }
   .fmt-emoji-more summary.fmt-more-summary {
     list-style: none;
     min-width: 30px;
@@ -348,21 +350,143 @@
   }
   .fmt-emoji-more summary.fmt-more-summary::-webkit-details-marker { display: none; }
   .fmt-emoji-more summary.fmt-more-summary:hover { border-color: var(--accent); color: var(--accent); }
-  .fmt-emoji-grid {
+  /* Shell: flex column so ▲/▼ rails are never painted under the scrollable grid. */
+  .fmt-emoji-grid-shell {
     position: absolute;
-    z-index: 100;
+    z-index: 630;
     top: 100%;
-    left: 0;
-    margin-top: 4px;
-    padding: 8px;
+    bottom: auto;
+    left: auto;
+    right: 0;
+    margin-top: 8px;
+    margin-bottom: 0;
+    box-sizing: border-box;
+    width: min(24rem, calc(100vw - 2rem));
+    max-height: min(24rem, min(62vh, calc(100vh - 2rem)));
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    max-width: 220px;
-    background: var(--surface);
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08);
+  }
+  .fmt-emoji-grid-shell.fmt-emoji-grid-shell--flip-above {
+    top: auto;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 8px;
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint {
+    flex: 0 0 auto;
+    position: static;
+    transform: none;
+    left: auto;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    width: 100%;
+    box-sizing: border-box;
+    pointer-events: none;
+    font-size: 0.72rem;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--surface2), var(--surface));
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.06);
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint--bottom {
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    background: linear-gradient(180deg, var(--surface), var(--surface2));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint.is-hidden { display: none !important; }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint.fmt-emoji-scroll-hint--dim {
+    opacity: 0.38;
+    color: var(--text-light);
+  }
+  .fmt-emoji-grid {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    height: auto;
+    margin: 0;
+    padding: 0.45rem;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 4px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: auto;
+    scrollbar-color: var(--text-muted) var(--surface2);
+    background: var(--surface);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .fmt-emoji-grid::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .fmt-emoji-grid::-webkit-scrollbar-thumb {
+    background: var(--text-light);
+    border-radius: 4px;
+  }
+  .fmt-emoji-grid::-webkit-scrollbar-track {
+    background: var(--surface2);
+  }
+  .fmt-emoji-grid.fmt-emoji-grid--has-overflow:not(.fmt-emoji-grid--scrolled-end) {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08),
+      inset 0 -18px 16px -14px rgba(0, 0, 0, 0.12);
+  }
+  .fmt-emoji-grid.fmt-emoji-grid--has-overflow.fmt-emoji-grid--hint-up:not(.fmt-emoji-grid--scrolled-end) {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08),
+      inset 0 14px 14px -12px rgba(0, 0, 0, 0.08),
+      inset 0 -18px 16px -14px rgba(0, 0, 0, 0.12);
+  }
+  .fmt-emoji-grid.fmt-emoji-grid--has-overflow.fmt-emoji-grid--hint-up.fmt-emoji-grid--scrolled-end {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08),
+      inset 0 14px 14px -12px rgba(0, 0, 0, 0.08);
+  }
+  @media (max-width: 480px) {
+    .fmt-emoji-grid-shell {
+      width: min(22rem, calc(100vw - 1.25rem));
+      max-height: min(22rem, min(58vh, calc(100vh - 2rem)));
+    }
+    .fmt-emoji-grid {
+      grid-template-columns: repeat(7, 1fr);
+    }
+  }
+  .fmt-emoji-grid .fmt-btn.fmt-emoji.fmt-emoji-picker-cell {
+    aspect-ratio: 1;
+    min-width: 0;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    line-height: 1;
+    border-radius: 8px;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
   }
   .modal .format-toolbar { margin-top: 0.35rem; margin-bottom: 0.65rem; }
   .ask-box textarea {
@@ -454,6 +578,28 @@
     opacity: 0.85;
   }
 
+  /* Lift feed while emoji picker open so fixed panel isn't covered by later siblings (pagination, next cards). */
+  #questions-list:has(details.fmt-emoji-more[open]) {
+    position: relative;
+    z-index: 85;
+  }
+  /*
+   * Ask-a-question toolbar is *outside* #questions-list; later siblings (pagination, filters, cards) paint on top
+   * by default. Portal moves the grid shell to body; these rules still lift the chrome row if anything stacks wrong.
+   */
+  .ask-box:has(details.fmt-emoji-more[open]) {
+    position: relative;
+    z-index: 200;
+  }
+  .app-layout:has(.main-col details.fmt-emoji-more[open]) .main-col {
+    position: relative;
+    z-index: 55;
+  }
+  .app-layout:has(.main-col details.fmt-emoji-more[open]) .side-col {
+    position: relative;
+    z-index: 1;
+  }
+
   .q-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
   .q-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .q-author { font-size: 0.8rem; font-weight: 500; color: var(--text-muted); }
@@ -523,12 +669,77 @@
     border-radius: 4px;
     border: 1px solid var(--border);
   }
-  .rich-message .rich-pre {
+  .rich-message .rich-pre-wrap {
     margin: 0.5rem 0;
-    padding: 0.65rem 0.85rem;
-    background: var(--surface2);
+    max-width: 100%;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
+    background: var(--surface2);
+    overflow: hidden;
+  }
+  .rich-pre-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .rich-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .rich-copy-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+  .rich-copy-btn svg { pointer-events: none; }
+  .rich-copy-btn.rich-copy-btn--done {
+    border-color: var(--success);
+    color: var(--success);
+    background: var(--success-light);
+  }
+  .rich-message .rich-code-line-wrap {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    gap: 3px;
+    max-width: 100%;
+    margin: 0 1px;
+  }
+  .rich-message .rich-code-line-wrap .rich-code {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .rich-copy-btn.rich-copy-btn--inline {
+    width: 22px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: 4px;
+  }
+  .rich-copy-btn.rich-copy-btn--inline svg {
+    width: 12px;
+    height: 12px;
+  }
+  .rich-message .rich-pre-wrap .rich-pre {
+    margin: 0;
+    padding: 0.55rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     overflow-x: auto;
     max-width: 100%;
   }
@@ -708,7 +919,26 @@
     pointer-events: none;
   }
   .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* Avoid a flash of the join screen on hard refresh when we will auto-rejoin (class set by inline script below). */
+  html.std-restoring-session #join-screen {
+    display: none !important;
+  }
+  html.std-restoring-session #app-screen {
+    display: block !important;
+    min-height: 100vh;
+  }
 </style>
+<script>
+(function () {
+  try {
+    var raw = localStorage.getItem('sqa_student_last_code') || localStorage.getItem('tdx_student_last_code');
+    if (raw && String(raw).trim()) {
+      document.documentElement.classList.add('std-restoring-session');
+    }
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 
@@ -719,13 +949,13 @@
       <div class="join-logo-mark">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       </div>
-      <span class="join-logo-text">TDX Q&amp;A</span>
+      <span class="join-logo-text">Session Q&amp;A</span>
     </div>
     <h1 class="join-title">Join your session</h1>
-    <p class="join-sub">Enter the session code your instructor shared to access the Q&amp;A board.</p>
+    <p class="join-sub">Enter the session code your host shared to open the Q&amp;A board. This browser reopens your last session after a refresh until you tap <strong>Leave</strong>.</p>
     <div class="field">
       <label>Session code</label>
-      <input id="code-input" class="code-input" type="text" placeholder="TDX-XXXX" maxlength="8" autocomplete="off">
+      <input id="code-input" class="code-input" type="text" placeholder="SQA-XXXX" maxlength="8" autocomplete="off">
     </div>
     <div class="field">
       <label>Your name <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-light)">(optional)</span></label>
@@ -754,13 +984,6 @@
   <div class="app-layout">
     <!-- Main column -->
     <div class="main-col">
-      <div class="bulletin-card" id="bulletin-card" style="display:none;">
-        <div class="bulletin-label">Instructor bulletin</div>
-        <div class="bulletin-title" id="bulletin-title"></div>
-        <div class="bulletin-body" id="bulletin-body"></div>
-        <div class="bulletin-images" id="bulletin-images"></div>
-      </div>
-
       <!-- Ask box -->
       <div class="ask-box">
         <div class="ask-box-header">Ask a question</div>
@@ -777,20 +1000,9 @@
           <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('q-text','✅')">✅</button>
           <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('q-text','💡')">💡</button>
           <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('q-text','❓')">❓</button>
-          <details class="fmt-emoji-more" id="q-text-emoji-more" onclick="event.stopPropagation()">
-            <summary class="fmt-more-summary" title="More emojis">⋯</summary>
-            <div class="fmt-emoji-grid" role="group" aria-label="More emojis">
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🎉');closeFmtEmojiDetails('q-text-emoji-more')">🎉</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','❤️');closeFmtEmojiDetails('q-text-emoji-more')">❤️</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','😊');closeFmtEmojiDetails('q-text-emoji-more')">😊</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🙏');closeFmtEmojiDetails('q-text-emoji-more')">🙏</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','⭐');closeFmtEmojiDetails('q-text-emoji-more')">⭐</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🔥');closeFmtEmojiDetails('q-text-emoji-more')">🔥</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','👀');closeFmtEmojiDetails('q-text-emoji-more')">👀</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','📌');closeFmtEmojiDetails('q-text-emoji-more')">📌</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','💬');closeFmtEmojiDetails('q-text-emoji-more')">💬</button>
-              <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('q-text','🚀');closeFmtEmojiDetails('q-text-emoji-more')">🚀</button>
-            </div>
+          <details class="fmt-emoji-more" id="q-text-emoji-more">
+            <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+            <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="q-text" role="group" aria-label="More emojis"></div>
           </details>
         </div>
         <textarea id="q-text" placeholder="What's on your mind? Ask anything about the session..." rows="3"></textarea>
@@ -904,20 +1116,9 @@
       <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('edit-text','✅')">✅</button>
       <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('edit-text','💡')">💡</button>
       <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('edit-text','❓')">❓</button>
-      <details class="fmt-emoji-more" id="edit-text-emoji-more" onclick="event.stopPropagation()">
-        <summary class="fmt-more-summary" title="More emojis">⋯</summary>
-        <div class="fmt-emoji-grid" role="group" aria-label="More emojis">
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🎉');closeFmtEmojiDetails('edit-text-emoji-more')">🎉</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','❤️');closeFmtEmojiDetails('edit-text-emoji-more')">❤️</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','😊');closeFmtEmojiDetails('edit-text-emoji-more')">😊</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🙏');closeFmtEmojiDetails('edit-text-emoji-more')">🙏</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','⭐');closeFmtEmojiDetails('edit-text-emoji-more')">⭐</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🔥');closeFmtEmojiDetails('edit-text-emoji-more')">🔥</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','👀');closeFmtEmojiDetails('edit-text-emoji-more')">👀</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','📌');closeFmtEmojiDetails('edit-text-emoji-more')">📌</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','💬');closeFmtEmojiDetails('edit-text-emoji-more')">💬</button>
-          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('edit-text','🚀');closeFmtEmojiDetails('edit-text-emoji-more')">🚀</button>
-        </div>
+      <details class="fmt-emoji-more" id="edit-text-emoji-more">
+        <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+        <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="edit-text" role="group" aria-label="More emojis"></div>
       </details>
     </div>
     <textarea id="edit-text" style="width:100%;min-height:100px;padding:0.75rem;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;outline:none;"></textarea>
@@ -935,6 +1136,7 @@
 // ══════════════════════════════════════════════
 //  FIREBASE CONFIG
 // ══════════════════════════════════════════════
+// Bundled sample project; replace with your own Firebase app when you fork.
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCM_fXpm_F2a4-h04m18UPy472UmDaa8OE",
   authDomain: "tdx-qa.firebaseapp.com",
@@ -972,6 +1174,103 @@ const IMAGE_JPEG_QUALITY = 0.82;
 
 function genId() { return Math.random().toString(36).slice(2,10); }
 
+/** Same browser profile across refreshes (not a login — clear site data to reset). */
+const LS_STUDENT_UID = 'sqa_student_uid';
+const LS_STUDENT_UID_LEGACY = 'tdx_student_uid';
+const LS_LAST_SESSION = 'sqa_student_last_code';
+const LS_LAST_SESSION_LEGACY = 'tdx_student_last_code';
+const LS_NAME = 'sqa_name';
+const LS_NAME_LEGACY = 'tdx_name';
+const SS_LEGACY_UID = 'tdx_uid';
+
+function safeLsGet(k) {
+  try { return localStorage.getItem(k); } catch (e) { return null; }
+}
+function safeLsSet(k, v) {
+  try { localStorage.setItem(k, v); } catch (e) {}
+}
+function safeLsRemove(k) {
+  try { localStorage.removeItem(k); } catch (e) {}
+}
+
+function clearStudentRestoringShell() {
+  try { document.documentElement.classList.remove('std-restoring-session'); } catch (e) {}
+}
+
+function studentMyQsKey() {
+  return 'sqa_my_questions_' + String(sessionCode || '').replace(/[^A-Z0-9_-]/gi, '');
+}
+function legacyStudentMyQsPerSessionKey() {
+  return 'tdx_my_questions_' + String(sessionCode || '').replace(/[^A-Z0-9_-]/gi, '');
+}
+
+function migrateLegacyStudentMyQuestions() {
+  if (!sessionCode) return;
+  var nk = studentMyQsKey();
+  try {
+    if (sessionStorage.getItem(nk)) return;
+    var fromPerSessionLegacy = sessionStorage.getItem(legacyStudentMyQsPerSessionKey());
+    if (fromPerSessionLegacy) {
+      sessionStorage.setItem(nk, fromPerSessionLegacy);
+      sessionStorage.removeItem(legacyStudentMyQsPerSessionKey());
+      return;
+    }
+    var leg = sessionStorage.getItem('tdx_my_questions');
+    if (leg) {
+      sessionStorage.setItem(nk, leg);
+      sessionStorage.removeItem('tdx_my_questions');
+    }
+  } catch (e) {}
+}
+
+function tryAutoRejoinStudent() {
+  function bailToJoin() {
+    clearStudentRestoringShell();
+    var j = document.getElementById('join-screen');
+    var a = document.getElementById('app-screen');
+    if (j) j.style.display = 'flex';
+    if (a) a.style.display = 'none';
+  }
+  if (!db) {
+    bailToJoin();
+    return;
+  }
+  var raw = safeLsGet(LS_LAST_SESSION) || safeLsGet(LS_LAST_SESSION_LEGACY);
+  if (raw && safeLsGet(LS_LAST_SESSION_LEGACY) && !safeLsGet(LS_LAST_SESSION)) {
+    safeLsSet(LS_LAST_SESSION, String(raw).trim());
+    safeLsRemove(LS_LAST_SESSION_LEGACY);
+  }
+  if (!raw) {
+    bailToJoin();
+    return;
+  }
+  var code = String(raw).trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  if (!code) {
+    safeLsRemove(LS_LAST_SESSION);
+    safeLsRemove(LS_LAST_SESSION_LEGACY);
+    bailToJoin();
+    return;
+  }
+  db.collection('sessions').doc(code).get().then(function (doc) {
+    if (!doc.exists) {
+      safeLsRemove(LS_LAST_SESSION);
+      safeLsRemove(LS_LAST_SESSION_LEGACY);
+      bailToJoin();
+      return;
+    }
+    sessionCode = code;
+    currentSession = doc.data();
+    var nm = (safeLsGet(LS_NAME) || safeLsGet(LS_NAME_LEGACY) || '').trim();
+    userName = nm || 'Anonymous';
+    userEmail = '';
+    var codeEl = document.getElementById('code-input');
+    var nameEl = document.getElementById('name-input');
+    if (codeEl) codeEl.value = code;
+    if (nameEl) nameEl.value = nm || '';
+    enterApp();
+  }).catch(function () { bailToJoin(); });
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1001,10 +1300,23 @@ window.addEventListener('load', () => {
       if (firebase.storage) storage = firebase.storage();
     } catch(e) { console.warn('Firebase init failed:', e); }
   }
-  userId = sessionStorage.getItem('tdx_uid') || genId();
-  sessionStorage.setItem('tdx_uid', userId);
-  const stored = localStorage.getItem('tdx_name');
+  var legacyUid = null;
+  try { legacyUid = sessionStorage.getItem(SS_LEGACY_UID); } catch (e) {}
+  userId = safeLsGet(LS_STUDENT_UID) || safeLsGet(LS_STUDENT_UID_LEGACY) || legacyUid || genId();
+  safeLsSet(LS_STUDENT_UID, userId);
+  if (safeLsGet(LS_STUDENT_UID_LEGACY)) safeLsRemove(LS_STUDENT_UID_LEGACY);
+  if (legacyUid) {
+    try { sessionStorage.removeItem(SS_LEGACY_UID); } catch (e) {}
+  }
+  var nNew = safeLsGet(LS_NAME);
+  var nLeg = safeLsGet(LS_NAME_LEGACY);
+  const stored = (nNew || nLeg || '').trim();
   if (stored) document.getElementById('name-input').value = stored;
+  if (!nNew && nLeg) {
+    safeLsSet(LS_NAME, nLeg);
+    safeLsRemove(LS_NAME_LEGACY);
+  }
+  if (configReady && db) tryAutoRejoinStudent();
 });
 
 function joinSession() {
@@ -1013,7 +1325,10 @@ function joinSession() {
   if (!code) { showJoinError('Please enter a session code.'); return; }
   userName = document.getElementById('name-input').value.trim() || 'Anonymous';
   userEmail = '';
-  if (userName !== 'Anonymous') localStorage.setItem('tdx_name', userName);
+  if (userName !== 'Anonymous') {
+    safeLsSet(LS_NAME, userName);
+    safeLsRemove(LS_NAME_LEGACY);
+  }
 
   document.getElementById('join-btn').disabled = true;
   document.getElementById('join-btn').textContent = 'Joining...';
@@ -1029,6 +1344,12 @@ function joinSession() {
 function showJoinError(msg) { document.getElementById('join-error').textContent = msg; }
 
 function enterApp() {
+  clearStudentRestoringShell();
+  if (sessionCode) {
+    safeLsSet(LS_LAST_SESSION, sessionCode);
+    safeLsRemove(LS_LAST_SESSION_LEGACY);
+  }
+  migrateLegacyStudentMyQuestions();
   document.getElementById('join-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
   postAnonymously = (userName === 'Anonymous' || !userName);
@@ -1089,6 +1410,11 @@ function leaveSession() {
   if (studentPollTimer) { clearInterval(studentPollTimer); studentPollTimer = null; }
   clearPendingQuestionImages();
   postAnonymously = true;
+  safeLsRemove(LS_LAST_SESSION);
+  safeLsRemove(LS_LAST_SESSION_LEGACY);
+  sessionCode = null;
+  currentSession = null;
+  clearStudentRestoringShell();
   document.getElementById('join-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('join-error').textContent = '';
@@ -1115,7 +1441,6 @@ function renderSessionInfo(s) {
   const desc = document.getElementById('si-desc');
   desc.textContent = s.description || '';
   desc.style.display = s.description ? '' : 'none';
-  renderBulletin(s);
   renderSessionNote(s);
 }
 
@@ -1141,29 +1466,6 @@ function renderSessionNote(s) {
   bodyEl.innerHTML = b ? formatRichMessage(b) : '';
   bodyEl.style.display = b ? '' : 'none';
   imgEl.innerHTML = urls.map(function (u) {
-    var safe = String(u).replace(/"/g, '');
-    return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
-  }).join('');
-}
-
-function renderBulletin(s) {
-  const card = document.getElementById('bulletin-card');
-  const t = (s.bulletinTitle || '').trim();
-  const b = (s.bulletinBody || '').trim();
-  const urls = Array.isArray(s.bulletinImageUrls) ? s.bulletinImageUrls.filter(isHttpsUrl) : [];
-  if (!t && !b && !urls.length) {
-    card.style.display = 'none';
-    return;
-  }
-  card.style.display = 'block';
-  document.getElementById('bulletin-title').className = 'bulletin-title rich-message';
-  document.getElementById('bulletin-title').innerHTML = t ? formatRichMessage(t) : '';
-  document.getElementById('bulletin-title').style.display = t ? '' : 'none';
-  document.getElementById('bulletin-body').className = 'bulletin-body rich-message';
-  document.getElementById('bulletin-body').innerHTML = b ? formatRichMessage(b) : '';
-  document.getElementById('bulletin-body').style.display = b ? '' : 'none';
-  const imgHost = document.getElementById('bulletin-images');
-  imgHost.innerHTML = urls.map(function (u) {
     var safe = String(u).replace(/"/g, '');
     return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
   }).join('');
@@ -1696,9 +1998,9 @@ function submitQuestion() {
   };
   if (imageUrls.length) payload.imageUrls = imageUrls;
   db.collection('sessions').doc(sessionCode).collection('questions').add(payload).then(docRef => {
-    const myQs = JSON.parse(sessionStorage.getItem('tdx_my_questions') || '[]');
+    const myQs = JSON.parse(sessionStorage.getItem(studentMyQsKey()) || '[]');
     myQs.push(docRef.id);
-    sessionStorage.setItem('tdx_my_questions', JSON.stringify(myQs));
+    sessionStorage.setItem(studentMyQsKey(), JSON.stringify(myQs));
     document.getElementById('q-text').value = '';
     clearPendingQuestionImages();
     document.getElementById('submit-btn').disabled = false;
@@ -1710,7 +2012,8 @@ function submitQuestion() {
 }
 
 function isMyQuestion(id) {
-  const myQs = JSON.parse(sessionStorage.getItem('tdx_my_questions') || '[]');
+  if (!sessionCode) return false;
+  const myQs = JSON.parse(sessionStorage.getItem(studentMyQsKey()) || '[]');
   return myQs.includes(id);
 }
 
@@ -1903,6 +2206,280 @@ function insertSlackFormat(textareaId, mode) {
   ta.setSelectionRange(ns, ne);
 }
 
+/** Large Unicode emoji set — system font renders each; scroll for more. */
+var FORMAT_EMOJI_PICKER_RAW = "😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙🥲😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕😟🙁☹😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾👋🤚🖐✋🖖👌🤌🤏✌🤞🤟🤘🤙👈👉👆🖕👇☝👍👎✊👊🤛🤜👏🙌👐🤲🤝🙏✍💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🫀🫁🦷🦴👀👁👅👄❤🧡💛💚💙💜🖤🤍🤎💔❣💕💞💓💗💖💘💝💟☮✝☪🕉☸✡🔯🪄🪅🎴🎭🖼🎨🔮🧿🐵🐒🦍🦧🐶🐕🦮🐩🐺🦊🦝🐱🐈🦁🐯🐅🐆🐴🐎🦄🦓🦌🦬🐮🐂🐃🐄🐷🐖🐗🐽🐏🐑🐐🐪🐫🦙🦒🐘🦣🦏🦛🐭🐁🐀🐹🐰🐇🐿🦫🦔🦇🐻🐨🐼🐾🦃🐔🐓🐣🐤🐥🐦🐧🕊🦅🦆🦢🦉🦤🪶🦩🦚🦜🐸🐊🐢🦎🐍🐲🐉🦕🦖🐳🐋🐬🦭🐟🐠🐡🦈🐙🐚🪸🐌🦋🐛🐜🐝🪲🐞🦗🪳🕷🕸🦂🦟🪰🪱🦠💐🌸💮🌹🥀🌺🌻🌼🌷🪻🌱🪴🌲🌳🌴🌵🌾🌿☘🍀🍁🍂🍃🪹🪺🍄🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🍞🥐🥖🫓🥨🥯🥞🧇🧀🍖🍗🥩🥓🍔🍟🍕🌭🥪🌮🌯🫔🥙🧆🥚🍳🥘🍲🫕🥣🥗🍿🧈🧂🥫🍱🍘🍙🍚🍛🍜🍝🍠🍢🍣🍤🍥🥮🍡🥟🥠🥡🦀🦞🦐🦑🦪🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯🍼🥛☕🫖🍵🍶🍾🍷🍸🍹🍺🍻🥂🥃🥤🧋🧃🧉🧊🥢🍽🍴🥄🔪🫙🌍🌎🌏🌐🗺🧭🏔⛰🌋🗻🏕🏖🏜🏝🏞🏟🏛🏗🧱🪨🪵🛖🏘🏚🏠🏡🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🛕🕍⛩🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉♨🎠🛝🎡🎢💈🎪🚂🚃🚄🚅🚆🚇🚈🚉🚊🚝🚞🚋🚌🚍🚎🚐🚑🚒🚓🚔🚕🚖🚗🚘🚙🛻🚚🚛🚜🏎🏍🛵🦽🦼🛺🚲🛴🛹🛼🚏🛣🛤⛽🚨🚥🚦🛑🚧⚓🛟⛵🛶🚤🛳⛴🛥🚢✈🛩🛫🛬🪂💺🚁🚟🚠🚡🛰🚀🛸🪐🌠🌌⚽🏀🏈⚾🥎🎾🏐🏉🥏🎱🪀🏓🏸🏒🏑🥍🏏🪃🥅⛳🪁🏹🎣🤿🥊🥋🎽🛷⛸🥌🎿⛷🏂🏋🤼🤸🤺⛹🤹🧘🏌🏇🧗🚵🚴🏆🥇🥈🥉🏅🎖🏵🎗🎫🎟🩰🎬🎤🎧🎼🎹🥁🪘🎷🎺🎸🪕🎻🪈🎲♟🎯🎳🎮🕹🎰🧩📱📲☎📞📟📠🔋🪫🔌💻🖥🖨⌨🖱🖲💽💾💿📀🧮🎥🎞📽📺📷📸📹📼🔍🔎🕯💡🔦🏮🪔📔📕📖📗📘📙📚📓📒📃📜📄📰🗞📑🔖🏷💰🪙💴💵💶💷💸💳🧾✉📧📨📩📤📥📦📫📪📬📭📮🗳✏✒🖋🖊🖌🖍📝💼📁📂🗂📅📆🗒🗓📇📈📉📊📋📌📍📎🖇📏📐✂🗃🗄🗑🔒🔓🔏🔐🔑🗝🔨🪓⛏⚒🛠🗡⚔🔫🛡🔧🪛🔩⚙🗜⚖🦯🔗⛓🪝🧰🧲🪜💯💢💥💫💦💨🕳💬🗨🗯💭💤🔔🔕📣📢📿🏧🚮🚰♿🚹🚺🚻🚼🚾🛂🛃🛄🛅⚠🚸⛔🚫🚳🚭🚯🚱🚷📵🔞☢☣⬆↗➡↘⬇↙⬅↖↕↔↩↪⤴⤵🔃🔄🔙🔚🔛🔜🔝🛐⚛☯🕎♈♉♊♋♌♍♎♏♐♑♒♓⛎🔀🔁🔂▶⏩⏭⏯◀⏪⏮🔼⏫🔽⏬⏸⏹⏺⏏🎦🔅🔆📶📳📴♀♂⚧✖➕➖➗🟰♾‼⁉❓❔❕❗〰💱💲⚕♻❇✳❎🆎🆑🆘📛🔠🔡🔢🔣🔤⌚⏰⏱⏲🕰🕛🕧🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌝🌞⭐🌟☀🌤⛅🌥☁🌦🌧⛈🌩🌨❄☃⛄🌬🌪🌫🌈☂☔⛱⚡🔥💧🌊🎃🎄🎆🎇🧨✨🎈🎉🎊🎋🎍🎎🎏🎐🎑🧧🎀🎁🧸🪆🃏🀄";
+var FORMAT_EMOJI_PICKER_CHARS = Array.from(FORMAT_EMOJI_PICKER_RAW);
+
+function escFmtAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function ensureFmtEmojiGridShell(grid) {
+  if (!grid || !grid.parentNode) return null;
+  var existing = grid.closest('.fmt-emoji-grid-shell');
+  if (existing) {
+    var det0 = grid.closest('details.fmt-emoji-more') || existing._fmtEmojiDetails;
+    if (det0) {
+      det0._fmtEmojiShell = existing;
+      existing._fmtEmojiDetails = det0;
+    }
+    return existing;
+  }
+  var shell = document.createElement('div');
+  shell.className = 'fmt-emoji-grid-shell';
+  var top = document.createElement('div');
+  top.className = 'fmt-emoji-scroll-hint fmt-emoji-scroll-hint--top is-hidden';
+  top.setAttribute('aria-hidden', 'true');
+  top.textContent = '\u25B2';
+  top.title = 'More emojis above — scroll up';
+  var bot = document.createElement('div');
+  bot.className = 'fmt-emoji-scroll-hint fmt-emoji-scroll-hint--bottom is-hidden';
+  bot.setAttribute('aria-hidden', 'true');
+  bot.textContent = '\u25BC';
+  bot.title = 'More emojis below — scroll down';
+  var parent = grid.parentNode;
+  parent.insertBefore(shell, grid);
+  shell.appendChild(top);
+  shell.appendChild(grid);
+  shell.appendChild(bot);
+  var det = grid.closest('details.fmt-emoji-more');
+  if (det) {
+    det._fmtEmojiShell = shell;
+    shell._fmtEmojiDetails = det;
+  }
+  return shell;
+}
+
+function getFmtEmojiGridForDetails(details) {
+  if (!details) return null;
+  if (details._fmtEmojiShell) return details._fmtEmojiShell.querySelector('.fmt-emoji-grid');
+  return details.querySelector('.fmt-emoji-grid');
+}
+
+function mountFmtEmojiShellToBody(details) {
+  if (!details || !details.open) return;
+  var grid = getFmtEmojiGridForDetails(details);
+  if (!grid) return;
+  ensureFmtEmojiGridShell(grid);
+  var shell = details._fmtEmojiShell;
+  if (!shell || shell.parentNode === document.body) return;
+  document.body.appendChild(shell);
+}
+
+function updateFmtEmojiGridOverflowClasses(grid) {
+  if (!grid || !grid.isConnected) return;
+  var sh = grid.scrollHeight;
+  var ch = grid.clientHeight;
+  var EPS = 4;
+  var hasMore = sh > ch + EPS;
+  grid.classList.toggle('fmt-emoji-grid--has-overflow', hasMore);
+  var atEnd = grid.scrollTop + ch >= sh - EPS;
+  grid.classList.toggle('fmt-emoji-grid--scrolled-end', atEnd);
+  var atStart = grid.scrollTop <= EPS;
+  var shell = grid.closest('.fmt-emoji-grid-shell');
+  var hintTop = shell && shell.querySelector('.fmt-emoji-scroll-hint--top');
+  var hintBot = shell && shell.querySelector('.fmt-emoji-scroll-hint--bottom');
+  if (hintTop) {
+    hintTop.classList.toggle('is-hidden', !hasMore);
+    hintTop.classList.toggle('fmt-emoji-scroll-hint--dim', hasMore && atStart);
+    hintTop.title = hasMore && atStart ? 'Top of the list' : 'More emojis above — scroll up';
+  }
+  if (hintBot) {
+    hintBot.classList.toggle('is-hidden', !hasMore);
+    hintBot.classList.toggle('fmt-emoji-scroll-hint--dim', hasMore && atEnd);
+    hintBot.title = hasMore && atEnd ? 'End of the list' : 'More emojis below — scroll down';
+  }
+  grid.classList.toggle('fmt-emoji-grid--hint-up', hasMore && !atStart);
+  grid.classList.toggle('fmt-emoji-grid--hint-down', hasMore && !atEnd);
+}
+
+function bindFmtEmojiGridResizeObserver(grid) {
+  if (!grid || grid._fmtEmojiRo || typeof ResizeObserver === 'undefined') return;
+  var ro = new ResizeObserver(function () {
+    updateFmtEmojiGridOverflowClasses(grid);
+  });
+  grid._fmtEmojiRo = ro;
+  ro.observe(grid);
+  var shell = grid.closest('.fmt-emoji-grid-shell');
+  if (shell) ro.observe(shell);
+}
+
+function clearFmtEmojiGridDock(grid) {
+  if (!grid) return;
+  var shell = grid.closest('.fmt-emoji-grid-shell');
+  if (shell && shell.parentNode === document.body && shell._fmtEmojiDetails) {
+    var det = shell._fmtEmojiDetails;
+    var sum = det.querySelector('summary.fmt-more-summary');
+    if (sum) det.insertBefore(shell, sum.nextSibling);
+    else det.appendChild(shell);
+  }
+  if (grid._fmtEmojiRo) {
+    grid._fmtEmojiRo.disconnect();
+    grid._fmtEmojiRo = null;
+  }
+  var dock = shell || grid;
+  ['position', 'top', 'right', 'bottom', 'left', 'width', 'maxHeight', 'zIndex', 'margin', 'marginTop', 'marginBottom'].forEach(function (p) {
+    try { dock.style.removeProperty(p); } catch (e) {}
+  });
+  grid.classList.remove(
+    'fmt-emoji-grid--flip-above',
+    'fmt-emoji-grid--has-overflow',
+    'fmt-emoji-grid--scrolled-end',
+    'fmt-emoji-grid--hint-up',
+    'fmt-emoji-grid--hint-down'
+  );
+  if (shell) {
+    shell.classList.remove('fmt-emoji-grid-shell--flip-above');
+    shell.querySelectorAll('.fmt-emoji-scroll-hint').forEach(function (el) {
+      el.classList.add('is-hidden');
+      el.classList.remove('fmt-emoji-scroll-hint--dim');
+    });
+  }
+}
+
+var EMOJI_PANEL_PREFERRED_PX = 380;
+
+function positionFmtEmojiMore(details) {
+  if (!details || !details.open) return;
+  var grid = getFmtEmojiGridForDetails(details);
+  var sum = details.querySelector('summary');
+  if (!grid || !sum) return;
+  ensureFmtEmojiGridShell(grid);
+  var shell = grid.closest('.fmt-emoji-grid-shell');
+  var dock = shell || grid;
+  ['position', 'top', 'right', 'bottom', 'left', 'width', 'maxHeight', 'zIndex', 'margin', 'marginTop', 'marginBottom'].forEach(function (p) {
+    try { grid.style.removeProperty(p); } catch (e) {}
+  });
+
+  var rect = sum.getBoundingClientRect();
+  var gap = 8;
+  var vwPad = 8;
+  var vh = window.innerHeight;
+  var vw = window.innerWidth;
+  /* Viewport only — picker is position:fixed; clamping to .q-card made it tiny inside cards. */
+  var belowSlice = vh - rect.bottom - gap - vwPad;
+  var aboveSlice = rect.top - gap - vwPad;
+  var panelMax = Math.min(480, vh * 0.62);
+  var preferBelow = belowSlice >= Math.min(panelMax, 220) || (belowSlice >= aboveSlice && belowSlice >= 100);
+  grid.classList.remove('fmt-emoji-grid--flip-above');
+  if (shell) shell.classList.remove('fmt-emoji-grid-shell--flip-above');
+
+  var w = Math.min(380, vw - vwPad * 2);
+  var left = rect.right - w;
+  left = Math.max(vwPad, Math.min(left, vw - w - vwPad));
+
+  var preferredH = Math.min(EMOJI_PANEL_PREFERRED_PX, panelMax);
+  var capPx;
+  if (preferBelow) {
+    capPx = Math.max(48, Math.min(preferredH, belowSlice));
+    dock.style.position = 'fixed';
+    dock.style.left = left + 'px';
+    dock.style.right = 'auto';
+    dock.style.width = w + 'px';
+    dock.style.top = (rect.bottom + gap) + 'px';
+    dock.style.bottom = 'auto';
+  } else {
+    capPx = Math.max(48, Math.min(preferredH, aboveSlice));
+    dock.style.position = 'fixed';
+    dock.style.left = left + 'px';
+    dock.style.right = 'auto';
+    dock.style.width = w + 'px';
+    dock.style.top = 'auto';
+    dock.style.bottom = (vh - rect.top + gap) + 'px';
+  }
+  dock.style.maxHeight = capPx + 'px';
+  dock.style.zIndex = '12000';
+  dock.style.margin = '0';
+  requestAnimationFrame(function () { updateFmtEmojiGridOverflowClasses(grid); });
+}
+
+function disconnectFmtEmojiSummaryObserver(details) {
+  var sum = details && details.querySelector('summary.fmt-more-summary');
+  if (sum && sum._fmtEmojiIo) {
+    sum._fmtEmojiIo.disconnect();
+    sum._fmtEmojiIo = null;
+  }
+}
+
+function initFmtEmojiPickerLayout() {
+  var rafRe = 0;
+  function scheduleEmojiPickerReposition() {
+    cancelAnimationFrame(rafRe);
+    rafRe = requestAnimationFrame(function () {
+      document.querySelectorAll('details.fmt-emoji-more[open]').forEach(positionFmtEmojiMore);
+      document.querySelectorAll('details.fmt-emoji-more[open]').forEach(function (det) {
+        var g = getFmtEmojiGridForDetails(det);
+        if (g) updateFmtEmojiGridOverflowClasses(g);
+      });
+    });
+  }
+
+  document.addEventListener('toggle', function (e) {
+    var t = e.target;
+    if (!t || !t.matches || !t.matches('details.fmt-emoji-more')) return;
+    var g = t.querySelector('.fmt-emoji-grid');
+    if (!t.open) {
+      disconnectFmtEmojiSummaryObserver(t);
+      clearFmtEmojiGridDock(getFmtEmojiGridForDetails(t));
+      return;
+    }
+    requestAnimationFrame(function () {
+      var sum = t.querySelector('summary.fmt-more-summary');
+      if (sum && typeof IntersectionObserver !== 'undefined') {
+        disconnectFmtEmojiSummaryObserver(t);
+        var th = [];
+        for (var i = 0; i <= 20; i++) th.push(i / 20);
+        sum._fmtEmojiIo = new IntersectionObserver(
+          function () { scheduleEmojiPickerReposition(); },
+          { root: null, threshold: th }
+        );
+        sum._fmtEmojiIo.observe(sum);
+      }
+      if (g) ensureFmtEmojiGridShell(g);
+      mountFmtEmojiShellToBody(t);
+      positionFmtEmojiMore(t);
+      var g2 = getFmtEmojiGridForDetails(t);
+      if (!g2) return;
+      updateFmtEmojiGridOverflowClasses(g2);
+      bindFmtEmojiGridResizeObserver(g2);
+      if (!g2._fmtEmojiScrollBound) {
+        g2._fmtEmojiScrollBound = true;
+        g2.addEventListener('scroll', function () { updateFmtEmojiGridOverflowClasses(g2); }, { passive: true });
+      }
+    });
+  }, true);
+
+  var cap = { passive: true, capture: true };
+  window.addEventListener('scroll', scheduleEmojiPickerReposition, cap);
+  document.addEventListener('scroll', scheduleEmojiPickerReposition, cap);
+  window.addEventListener('resize', scheduleEmojiPickerReposition);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('scroll', scheduleEmojiPickerReposition, { passive: true });
+    window.visualViewport.addEventListener('resize', scheduleEmojiPickerReposition, { passive: true });
+  }
+}
+
+function fillFmtEmojiPickerGrids() {
+  document.querySelectorAll('.fmt-emoji-grid[data-emoji-picker-autofill]').forEach(function (grid) {
+    var tid = grid.getAttribute('data-emoji-target-id');
+    if (!tid) return;
+    ensureFmtEmojiGridShell(grid);
+    grid.innerHTML = FORMAT_EMOJI_PICKER_CHARS.map(function (ch) {
+      return '<button type="button" class="fmt-btn fmt-emoji fmt-emoji-picker-cell" data-emoji-target="' + escFmtAttr(tid) + '" data-ch="' + escFmtAttr(ch) + '" title="Insert" aria-label="Insert emoji">' + ch + '</button>';
+    }).join('');
+    requestAnimationFrame(function () {
+      var shell = grid.closest('.fmt-emoji-grid-shell');
+      var det = (shell && shell._fmtEmojiDetails) || grid.closest('details.fmt-emoji-more');
+      if (det && det.open) {
+        mountFmtEmojiShellToBody(det);
+        positionFmtEmojiMore(det);
+      }
+      updateFmtEmojiGridOverflowClasses(grid);
+      bindFmtEmojiGridResizeObserver(grid);
+    });
+  });
+}
+
 function insertEmoji(textareaId, ch) {
   var ta = document.getElementById(textareaId);
   if (!ta || ch == null) return;
@@ -1928,14 +2505,23 @@ function formatRichMessage(raw) {
   var chunks = [];
   var PH = '\uFFF0';
   var PH2 = '\uFFF1';
+  var copySvg = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   s = s.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, function (m, lang, code) {
     var i = chunks.length;
-    chunks.push('<pre class="rich-pre"><code>' + esc(code) + '</code></pre>');
+    chunks.push(
+      '<div class="rich-pre-wrap">' +
+      '<div class="rich-pre-toolbar"><button type="button" class="rich-copy-btn" aria-label="Copy code" title="Copy code">' + copySvg + '</button></div>' +
+      '<pre class="rich-pre"><code>' + esc(code) + '</code></pre></div>'
+    );
     return PH + 'R' + i + PH2;
   });
   s = s.replace(/`([^`\n]+)`/g, function (m, code) {
     var i = chunks.length;
-    chunks.push('<code class="rich-code">' + esc(code) + '</code>');
+    chunks.push(
+      '<span class="rich-code-line-wrap" role="group">' +
+      '<code class="rich-code">' + esc(code) + '</code>' +
+      '<button type="button" class="rich-copy-btn rich-copy-btn--inline" aria-label="Copy code" title="Copy code">' + copySvg + '</button></span>'
+    );
     return PH + 'R' + i + PH2;
   });
   s = esc(s);
@@ -1950,8 +2536,50 @@ function formatRichMessage(raw) {
 }
 function isHttpsUrl(u) { return !!u && /^https:\/\//i.test(String(u).trim()); }
 
+function copyRichCodeBlock(btn) {
+  var wrap = btn && btn.closest && (btn.closest('.rich-pre-wrap') || btn.closest('.rich-code-line-wrap'));
+  var codeEl = wrap && (wrap.querySelector('.rich-pre code') || wrap.querySelector('code.rich-code'));
+  if (!codeEl) return;
+  var txt = codeEl.textContent || '';
+  function done() {
+    showToast('Copied to clipboard');
+    btn.classList.add('rich-copy-btn--done');
+    setTimeout(function () { btn.classList.remove('rich-copy-btn--done'); }, 1600);
+  }
+  function fail() { showToast('Could not copy'); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done).catch(function () {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done();
+      } catch (e) { fail(); }
+    });
+  } else {
+    try {
+      var ta2 = document.createElement('textarea');
+      ta2.value = txt;
+      ta2.setAttribute('readonly', '');
+      ta2.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta2);
+      ta2.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta2);
+      done();
+    } catch (e2) { fail(); }
+  }
+}
+
 // Enter key on code input
 document.addEventListener('DOMContentLoaded', () => {
+  initFmtEmojiPickerLayout();
+  fillFmtEmojiPickerGrids();
   document.getElementById('code-input').addEventListener('keydown', e => { if (e.key==='Enter') joinSession(); });
   document.getElementById('code-input').addEventListener('input', function() { this.value = this.value.toUpperCase(); });
   var qt = document.getElementById('q-text');
@@ -1979,6 +2607,39 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 200);
     });
   }
+  document.body.addEventListener('click', function (e) {
+    var pick = e.target.closest && e.target.closest('.fmt-emoji-picker-cell[data-emoji-target]');
+    if (pick) {
+      e.preventDefault();
+      var tid = pick.getAttribute('data-emoji-target');
+      var ch = pick.getAttribute('data-ch');
+      if (tid && ch != null) insertEmoji(tid, ch);
+      var shellPick = pick.closest('.fmt-emoji-grid-shell');
+      var detPick = (shellPick && shellPick._fmtEmojiDetails) || pick.closest('details');
+      if (detPick) detPick.open = false;
+      return;
+    }
+    var btn = e.target.closest && e.target.closest('.rich-copy-btn');
+    if (!btn) return;
+    e.preventDefault();
+    copyRichCodeBlock(btn);
+  });
+  function closeFmtEmojiPickersIfOutside(e) {
+    var t = e.target;
+    if (!t || typeof t.closest !== 'function') return;
+    document.querySelectorAll('details.fmt-emoji-more[open]').forEach(function (d) {
+      if (d.contains(t)) return;
+      var shell = d._fmtEmojiShell;
+      if (shell && shell.contains(t)) return;
+      d.open = false;
+    });
+  }
+  document.addEventListener('pointerdown', closeFmtEmojiPickersIfOutside, true);
+  document.addEventListener('touchstart', closeFmtEmojiPickersIfOutside, { capture: true, passive: true });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('details.fmt-emoji-more[open]').forEach(function (d) { d.open = false; });
+  });
 });
 </script>
 </body>

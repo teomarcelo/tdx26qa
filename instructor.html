@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TDX Q&A — Instructor</title>
+<title>Session Q&A — Instructor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/firebase/firebase-app-compat.js" defer></script>
@@ -258,12 +258,66 @@
   }
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
+  .session-list-row {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+  }
+  .session-list-row .session-select-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: white;
+    font-family: inherit;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: left;
+    font-weight: 400;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .session-list-row .session-select-btn.session-select-btn--active {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .session-hide-btn {
+    flex-shrink: 0;
+    width: 32px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text-light);
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .session-hide-btn:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-light);
+  }
+
   /* Main panel */
   .main-panel {
     padding: 1.5rem;
     overflow-y: auto;
     min-width: 0;
     background: var(--surface);
+  }
+  .instr-questions-chrome {
+    display: none;
+    flex-direction: column;
+    gap: 0;
+  }
+  .instr-questions-chrome.is-visible {
+    display: flex;
   }
   .panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
   .panel-title { font-size: 1rem; font-weight: 600; }
@@ -285,6 +339,19 @@
   .q-card:hover { box-shadow: var(--shadow); }
   .q-card.pinned { border-left: 3px solid var(--pin); }
   .q-card.answered { opacity: 0.8; }
+
+  /*
+   * Emoji shell is position:fixed but still stacks with its branch. Later siblings (#instr-pagination-bottom,
+   * following .q-cards) paint on top by default — lift the list while any picker is open.
+   */
+  #questions-list:has(details.fmt-emoji-more[open]) {
+    position: relative;
+    z-index: 85;
+  }
+  #sdemo-questions > div:has(details.fmt-emoji-more[open]) {
+    position: relative;
+    z-index: 85;
+  }
 
   .q-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.6rem; }
   .q-author-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -378,12 +445,77 @@
     border-radius: 4px;
     border: 1px solid var(--border);
   }
-  .rich-message .rich-pre {
+  .rich-message .rich-pre-wrap {
     margin: 0.5rem 0;
-    padding: 0.65rem 0.85rem;
-    background: var(--surface2);
+    max-width: 100%;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
+    background: var(--surface2);
+    overflow: hidden;
+  }
+  .rich-pre-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .rich-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .rich-copy-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+  .rich-copy-btn svg { pointer-events: none; }
+  .rich-copy-btn.rich-copy-btn--done {
+    border-color: var(--success);
+    color: var(--success);
+    background: var(--success-light);
+  }
+  .rich-message .rich-code-line-wrap {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    gap: 3px;
+    max-width: 100%;
+    margin: 0 1px;
+  }
+  .rich-message .rich-code-line-wrap .rich-code {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .rich-copy-btn.rich-copy-btn--inline {
+    width: 22px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: 4px;
+  }
+  .rich-copy-btn.rich-copy-btn--inline svg {
+    width: 12px;
+    height: 12px;
+  }
+  .rich-message .rich-pre-wrap .rich-pre {
+    margin: 0;
+    padding: 0.55rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     overflow-x: auto;
     max-width: 100%;
   }
@@ -415,6 +547,35 @@
     margin-bottom: 0.4rem;
     position: relative;
     z-index: 10;
+  }
+  .format-toolbar:has(details.fmt-emoji-more[open]) {
+    /* Above following .answer-box / .q-actions (later siblings paint on top by default). */
+    z-index: 600;
+  }
+  .q-answer-area:has(details.fmt-emoji-more[open]) .answer-box,
+  .q-answer-area:has(details.fmt-emoji-more[open]) .answer-paste-preview {
+    position: relative;
+    z-index: 0;
+  }
+  .q-card:has(details.fmt-emoji-more[open]) .q-answer-area {
+    position: relative;
+    z-index: 150;
+  }
+  .q-card:has(details.fmt-emoji-more[open]) .q-actions {
+    position: relative;
+    z-index: 1;
+  }
+  .form-field:has(details.fmt-emoji-more[open]) > textarea {
+    position: relative;
+    z-index: 0;
+  }
+  #student-demo-panel .format-toolbar:has(details.fmt-emoji-more[open]) ~ textarea {
+    position: relative;
+    z-index: 0;
+  }
+  #student-demo-panel .rich-message .format-toolbar:has(details.fmt-emoji-more[open]) ~ textarea {
+    position: relative;
+    z-index: 0;
   }
   .format-toolbar--compact { margin-bottom: 0.35rem; }
   .format-toolbar-label {
@@ -452,7 +613,8 @@
     margin: 0 2px;
     flex-shrink: 0;
   }
-  .fmt-emoji-more { position: relative; }
+  .fmt-emoji-more { position: relative; z-index: 0; }
+  .fmt-emoji-more[open] { z-index: 620; }
   .fmt-emoji-more summary.fmt-more-summary {
     list-style: none;
     min-width: 28px;
@@ -470,21 +632,147 @@
   }
   .fmt-emoji-more summary.fmt-more-summary::-webkit-details-marker { display: none; }
   .fmt-emoji-more summary.fmt-more-summary:hover { border-color: var(--accent); color: var(--accent); }
-  .fmt-emoji-grid {
+  /* Unicode characters only — each OS draws them with its own emoji font (no image assets shipped). */
+  /* Shell: flex column so ▲/▼ rails are never painted under the scrollable grid (absolute hints were covered). */
+  .fmt-emoji-grid-shell {
     position: absolute;
-    z-index: 100;
+    z-index: 630;
     top: 100%;
-    left: 0;
-    margin-top: 4px;
-    padding: 6px;
+    bottom: auto;
+    left: auto;
+    right: 0;
+    margin-top: 8px;
+    margin-bottom: 0;
+    box-sizing: border-box;
+    width: min(24rem, calc(100vw - 2rem));
+    max-height: min(24rem, min(62vh, calc(100vh - 2rem)));
     display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-    max-width: 200px;
-    background: var(--surface);
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08);
+  }
+  .fmt-emoji-grid-shell.fmt-emoji-grid-shell--flip-above {
+    top: auto;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 8px;
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint {
+    flex: 0 0 auto;
+    position: static;
+    transform: none;
+    left: auto;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    width: 100%;
+    box-sizing: border-box;
+    pointer-events: none;
+    font-size: 0.72rem;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--surface2), var(--surface));
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.06);
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint--bottom {
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    background: linear-gradient(180deg, var(--surface), var(--surface2));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint.is-hidden {
+    display: none !important;
+  }
+  .fmt-emoji-grid-shell > .fmt-emoji-scroll-hint.fmt-emoji-scroll-hint--dim {
+    opacity: 0.38;
+    color: var(--text-light);
+  }
+  .fmt-emoji-grid {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    height: auto;
+    margin: 0;
+    padding: 0.45rem;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 4px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: auto;
+    scrollbar-color: var(--text-muted) var(--surface2);
+    background: var(--surface);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .fmt-emoji-grid::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .fmt-emoji-grid::-webkit-scrollbar-thumb {
+    background: var(--text-light);
+    border-radius: 4px;
+  }
+  .fmt-emoji-grid::-webkit-scrollbar-track {
+    background: var(--surface2);
+  }
+  /* More rows below / above — inset + arrows (see updateFmtEmojiGridOverflowClasses). */
+  .fmt-emoji-grid.fmt-emoji-grid--has-overflow:not(.fmt-emoji-grid--scrolled-end) {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08),
+      inset 0 -18px 16px -14px rgba(0, 0, 0, 0.12);
+  }
+  .fmt-emoji-grid.fmt-emoji-grid--has-overflow.fmt-emoji-grid--hint-up:not(.fmt-emoji-grid--scrolled-end) {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08),
+      inset 0 14px 14px -12px rgba(0, 0, 0, 0.08),
+      inset 0 -18px 16px -14px rgba(0, 0, 0, 0.12);
+  }
+  .fmt-emoji-grid.fmt-emoji-grid--has-overflow.fmt-emoji-grid--hint-up.fmt-emoji-grid--scrolled-end {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08),
+      inset 0 14px 14px -12px rgba(0, 0, 0, 0.08);
+  }
+  @media (max-width: 480px) {
+    .fmt-emoji-grid-shell {
+      width: min(22rem, calc(100vw - 1.25rem));
+      max-height: min(22rem, min(58vh, calc(100vh - 2rem)));
+    }
+    .fmt-emoji-grid {
+      grid-template-columns: repeat(7, 1fr);
+    }
+  }
+  .fmt-emoji-grid .fmt-btn.fmt-emoji.fmt-emoji-picker-cell {
+    aspect-ratio: 1;
+    min-width: 0;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    line-height: 1;
+    border-radius: 8px;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
   }
 
   .answer-paste-preview { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.35rem; min-height: 0; }
@@ -518,6 +806,11 @@
   .show-answer-input { display: none; }
 
   .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-muted); }
+  .instructor-welcome { text-align: left; max-width: 24rem; margin: 0 auto; padding: 2.25rem 1.25rem 3rem; }
+  .instructor-welcome h3 { font-size: 1.05rem; color: var(--text); margin: 0 0 0.75rem; font-weight: 600; letter-spacing: -0.02em; text-align: left; }
+  .instructor-welcome .instructor-welcome-lead { font-size: 0.9rem; line-height: 1.55; margin: 0 0 1rem; color: var(--text-muted); text-align: left; }
+  .instructor-welcome ul { margin: 0; padding-left: 1.15rem; font-size: 0.86rem; line-height: 1.65; color: var(--text-muted); text-align: left; }
+  .instructor-welcome li { margin-bottom: 0.4rem; }
 
   .toast {
     position: fixed; bottom: 1.5rem; right: 1.5rem;
@@ -544,7 +837,26 @@
   .modal-footer { display: flex; gap: 0.5rem; justify-content: flex-end; }
   .btn-ghost { padding: 0.55rem 1.1rem; background: none; border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-family: inherit; font-size: 0.9rem; cursor: pointer; transition: all 0.15s; }
   .btn-danger { padding: 0.55rem 1.1rem; background: var(--danger); color: white; border: none; border-radius: var(--radius-sm); font-family: inherit; font-size: 0.9rem; cursor: pointer; }
+
+  /* Avoid a flash of the login screen on hard refresh when session is restored (class set by inline script below). */
+  html.instr-restoring-session #login-screen {
+    display: none !important;
+  }
+  html.instr-restoring-session #app-screen {
+    display: flex !important;
+    flex-direction: column;
+    min-height: 100vh;
+  }
 </style>
+<script>
+(function () {
+  try {
+    if (sessionStorage.getItem('sqa_instructor_name') || sessionStorage.getItem('tdx_instructor_name')) {
+      document.documentElement.classList.add('instr-restoring-session');
+    }
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 
@@ -616,6 +928,18 @@
   </div>
 </div>
 
+<template id="tmpl-instructor-welcome">
+  <div class="empty-state instructor-welcome">
+    <h3>Welcome — pick a session</h3>
+    <p class="instructor-welcome-lead">In the sidebar under <strong>My sessions</strong>, use <strong>+ New session</strong> to start a session (you’ll get a short session code), or <strong>Join session</strong> if you already have a code from another host.</p>
+    <ul>
+      <li>Select a session in the list to load its questions, stats, and settings in this panel.</li>
+      <li>Share the session code with students so they can join from the student page and post questions.</li>
+      <li>New to the layout? From the sign-in screen, use <strong>Try the demo</strong> for sample questions (no Firebase required).</li>
+    </ul>
+  </div>
+</template>
+
 <!-- INSTRUCTOR APP -->
 <div id="app-screen">
   <div class="top-bar">
@@ -623,7 +947,7 @@
       <div class="top-bar-logo">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       </div>
-      <span class="top-bar-name">TDX Q&amp;A</span>
+      <span class="top-bar-name">Session Q&amp;A</span>
       <span class="instructor-badge">Instructor</span>
       <span id="instructor-name-bar" style="font-size:0.82rem;color:var(--text-muted);"></span>
       <span id="demo-badge" style="display:none;font-size:0.72rem;font-weight:500;padding:2px 10px;border-radius:20px;background:#fff3e0;color:#e65100;">Demo mode</span>
@@ -631,7 +955,7 @@
     <div class="top-bar-right">
       <button id="reset-demo-btn" onclick="resetDemo()" style="display:none;font-size:0.82rem;color:#e65100;background:none;border:1.5px solid #e65100;padding:0.25rem 0.8rem;border-radius:6px;cursor:pointer;font-family:inherit;transition:all 0.15s;" onmouseover="this.style.background='#fff3e0'" onmouseout="this.style.background='none'">↺ Reset demo</button>
       <button id="student-view-btn" onclick="toggleStudentView()" style="display:none;font-size:0.82rem;color:#6a0dad;background:none;border:1.5px solid #6a0dad;padding:0.25rem 0.8rem;border-radius:6px;cursor:pointer;font-family:inherit;transition:all 0.15s;" onmouseover="this.style.background='#f3e8ff'" onmouseout="this.style.background='none'">👁 Student view</button>
-      <span id="active-code" class="code-badge" title="Click to copy" onclick="copyCode()">—</span>
+      <span id="active-code" class="code-badge" title="Click to copy session code" onclick="copyCode()" style="display:none" aria-hidden="true"></span>
       <button class="top-btn" onclick="instructorLogout()">Sign out</button>
     </div>
   </div>
@@ -676,7 +1000,7 @@
         </div>
 
         <!-- Filters -->
-        <div class="side-section" id="sec-filters">
+        <div class="side-section collapsed" id="sec-filters">
           <div class="side-section-header" onclick="toggleSection('sec-filters')">
             <span class="side-label">Filter</span>
             <span class="side-chevron">▾</span>
@@ -728,47 +1052,8 @@
               <button class="save-btn" onclick="saveSession()">Save session info</button>
             </div>
             <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
-              <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">Live bulletin (students)</div>
-              <p style="font-size:0.75rem;color:var(--text-light);margin-bottom:0.65rem;line-height:1.45;">One notice at the top of the student board. Slack-style: <code style="font-size:0.85em;">*bold*</code>, <code>_italic_</code>, <code>~strike~</code>, <code>`inline code`</code>, and fenced triple-backtick code blocks; emojis; <code>https://</code> links; image URLs one per line.</p>
-              <div class="form-field">
-                <label>Title</label>
-                <input class="mini-input" id="bulletin-title-input" type="text" placeholder="e.g. Room change — we’re in Hall B now">
-              </div>
-              <div class="form-field">
-                <label>Message</label>
-                <div class="format-toolbar format-toolbar--compact" role="toolbar" aria-label="Insert formatting">
-                  <span class="format-toolbar-label">Format</span>
-                  <button type="button" class="fmt-btn fmt-btn-b" title="Bold" aria-label="Bold" onclick="insertSlackFormat('bulletin-body-input','bold')"><strong>B</strong></button>
-                  <button type="button" class="fmt-btn fmt-btn-i" title="Italic" aria-label="Italic" onclick="insertSlackFormat('bulletin-body-input','italic')"><em>I</em></button>
-                  <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough" aria-label="Strikethrough" onclick="insertSlackFormat('bulletin-body-input','strike')"><span style="text-decoration:line-through;">S</span></button>
-                  <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code" aria-label="Inline code" onclick="insertSlackFormat('bulletin-body-input','code')">`</button>
-                  <button type="button" class="fmt-btn fmt-btn-mono" title="Code block" aria-label="Code block" onclick="insertSlackFormat('bulletin-body-input','fenced')">{ }</button>
-                  <span class="fmt-sep" aria-hidden="true"></span>
-                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','👍')">👍</button>
-                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','✅')">✅</button>
-                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','💡')">💡</button>
-                  <details class="fmt-emoji-more" id="bulletin-emoji-more" onclick="event.stopPropagation()">
-                    <summary class="fmt-more-summary" title="More emojis">⋯</summary>
-                    <div class="fmt-emoji-grid">
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','🎉');closeFmtEmojiDetails('bulletin-emoji-more')">🎉</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','👏');closeFmtEmojiDetails('bulletin-emoji-more')">👏</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','❓');closeFmtEmojiDetails('bulletin-emoji-more')">❓</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','❤️');closeFmtEmojiDetails('bulletin-emoji-more')">❤️</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('bulletin-body-input','🚀');closeFmtEmojiDetails('bulletin-emoji-more')">🚀</button>
-                    </div>
-                  </details>
-                </div>
-                <textarea class="mini-input mini-textarea" id="bulletin-body-input" placeholder="Important links, timing, anything everyone should see…"></textarea>
-              </div>
-              <div class="form-field">
-                <label>Image URLs (https, one per line)</label>
-                <textarea class="mini-input mini-textarea" id="bulletin-urls-input" style="min-height:72px;" placeholder="https://…"></textarea>
-              </div>
-              <button class="save-btn" style="background:var(--text);" onclick="saveBulletin()">Save bulletin</button>
-            </div>
-            <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
               <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Session sidebar (students)</div>
-              <p style="font-size:0.75rem;color:var(--text-light);margin-bottom:0.65rem;line-height:1.45;">Shows under <strong>Session</strong> on the student board. Same formatting as the bulletin (<code style="font-size:0.85em;">*bold*</code>, <code>_italic_</code>, <code>~strike~</code>, <code>`code`</code>, fenced blocks, emojis, links). Image URLs one per line.</p>
+              <p style="font-size:0.75rem;color:var(--text-light);margin-bottom:0.65rem;line-height:1.45;">Shows under <strong>Session</strong> on the student board. Slack-style: <code style="font-size:0.85em;">*bold*</code>, <code>_italic_</code>, <code>~strike~</code>, <code>`code`</code>, fenced blocks, emojis, links. Image URLs one per line.</p>
               <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;margin-bottom:0.65rem;cursor:pointer;user-select:none;">
                 <input type="checkbox" id="session-note-show" style="width:16px;height:16px;accent-color:var(--accent);"> Show on student sidebar
               </label>
@@ -789,15 +1074,9 @@
                   <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','👍')">👍</button>
                   <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','✅')">✅</button>
                   <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','💡')">💡</button>
-                  <details class="fmt-emoji-more" id="session-note-emoji-more" onclick="event.stopPropagation()">
-                    <summary class="fmt-more-summary" title="More emojis">⋯</summary>
-                    <div class="fmt-emoji-grid">
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','🎉');closeFmtEmojiDetails('session-note-emoji-more')">🎉</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','👏');closeFmtEmojiDetails('session-note-emoji-more')">👏</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','❓');closeFmtEmojiDetails('session-note-emoji-more')">❓</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','❤️');closeFmtEmojiDetails('session-note-emoji-more')">❤️</button>
-                      <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','🚀');closeFmtEmojiDetails('session-note-emoji-more')">🚀</button>
-                    </div>
+                  <details class="fmt-emoji-more" id="session-note-emoji-more">
+                    <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+                    <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="session-note-body-input" role="group" aria-label="More emojis"></div>
                   </details>
                 </div>
                 <textarea class="mini-input mini-textarea" id="session-note-body-input" placeholder="Links, dial-in, anything students should keep handy…"></textarea>
@@ -807,10 +1086,6 @@
                 <textarea class="mini-input mini-textarea" id="session-note-urls-input" style="min-height:56px;" placeholder="https://…"></textarea>
               </div>
               <button class="save-btn" style="background:var(--accent);" onclick="saveSessionNote()">Save session note</button>
-            </div>
-            <div style="margin-top:1rem;">
-              <button type="button" class="save-btn" style="background:var(--surface2);color:var(--text);border:1.5px solid var(--border);" onclick="duplicateSessionFromCurrent()">New session from this one</button>
-              <p style="font-size:0.72rem;color:var(--text-light);margin-top:0.45rem;line-height:1.4;">Copies session details, bulletin, and session sidebar note into a <strong>new</strong> code. Past questions stay in the old session in Firebase.</p>
             </div>
           </div>
         </div>
@@ -839,23 +1114,21 @@
 
     <!-- Main panel -->
     <div class="main-panel">
-      <div class="panel-header">
-        <div class="panel-title" id="panel-title">Questions</div>
-        <div class="sort-row" style="margin-left:auto;">
-          <button class="sort-btn active" onclick="setSort('recent',this)">Recent</button>
-          <button class="sort-btn" onclick="setSort('votes',this)">Most voted</button>
+      <div id="instr-questions-chrome" class="instr-questions-chrome" aria-hidden="true">
+        <div class="panel-header">
+          <div class="panel-title" id="panel-title">Questions</div>
+          <div class="sort-row" style="margin-left:auto;">
+            <button class="sort-btn active" onclick="setSort('recent',this)">Recent</button>
+            <button class="sort-btn" onclick="setSort('votes',this)">Most voted</button>
+          </div>
+        </div>
+        <div id="instr-pagination-top" class="q-pagination-num-wrap" aria-label="Question pages"></div>
+        <div class="questions-search-row">
+          <input type="search" id="instr-questions-search" class="questions-search-input" placeholder="Search questions…" autocomplete="off" aria-label="Search questions and answers" />
+          <button type="button" class="top-btn" onclick="clearInstructorSearch()" style="flex-shrink:0;">Clear</button>
         </div>
       </div>
-      <div id="instr-pagination-top" class="q-pagination-num-wrap" aria-label="Question pages"></div>
-      <div class="questions-search-row">
-        <input type="search" id="instr-questions-search" class="questions-search-input" placeholder="Search questions…" autocomplete="off" aria-label="Search questions and answers" />
-        <button type="button" class="top-btn" onclick="clearInstructorSearch()" style="flex-shrink:0;">Clear</button>
-      </div>
-      <div id="questions-list">
-        <div class="empty-state">
-          <p style="font-size:0.95rem;">Select or create a session to get started.</p>
-        </div>
-      </div>
+      <div id="questions-list"></div>
       <div id="instr-pagination-bottom" class="q-pagination-num-wrap" aria-label="Question pages"></div>
     </div>
   </div>
@@ -901,6 +1174,11 @@
         <button type="button" class="fmt-btn fmt-btn-mono" title="Block" onclick="insertSlackFormat('sdemo-q-text','fenced')">{ }</button>
         <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','👍')">👍</button>
         <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','✅')">✅</button>
+        <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','💡')">💡</button>
+        <details class="fmt-emoji-more">
+          <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+          <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="sdemo-q-text" role="group" aria-label="More emojis"></div>
+        </details>
       </div>
       <textarea id="sdemo-q-text" placeholder="What's on your mind?" style="width:100%;border:1.5px solid #e2ddd6;border-radius:8px;padding:.6rem .8rem;font-family:inherit;font-size:.85rem;resize:none;height:70px;background:#f7f6f3;color:#1a1814;outline:none;" onfocus="this.style.borderColor='#0070d2';this.style.background='#fff'" onblur="this.style.borderColor='#e2ddd6';this.style.background='#f7f6f3'"></textarea>
       <div style="display:flex;gap:.6rem;margin-top:.5rem;">
@@ -936,7 +1214,7 @@
     <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:1.1rem;line-height:1.5;">Enter the session code shared by the session owner to access it as a co-instructor.</p>
     <div class="field">
       <label style="font-size:0.78rem;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;display:block;">Session code</label>
-      <input id="join-session-code" class="mini-input" type="text" placeholder="TDX-XXXX" style="font-family:'DM Mono',monospace;font-size:1.1rem;letter-spacing:0.15em;text-align:center;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')instructorJoinSession()">
+      <input id="join-session-code" class="mini-input" type="text" placeholder="SQA-XXXX" style="font-family:'DM Mono',monospace;font-size:1.1rem;letter-spacing:0.15em;text-align:center;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')instructorJoinSession()">
     </div>
     <p class="error-msg" id="join-session-error" style="font-size:0.82rem;color:var(--warn);min-height:1.2rem;margin-bottom:0.5rem;"></p>
     <div class="modal-footer">
@@ -1006,6 +1284,7 @@
 // ══════════════════════════════════════════════
 //  FIREBASE CONFIG
 // ══════════════════════════════════════════════
+// Bundled sample project; replace with your own Firebase app when you fork.
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCM_fXpm_F2a4-h04m18UPy472UmDaa8OE",
   authDomain: "tdx-qa.firebaseapp.com",
@@ -1017,18 +1296,138 @@ const FIREBASE_CONFIG = {
 // ══════════════════════════════════════════════
 
 const QUESTIONS_PAGE_SIZE = 25;
+/** Remember last opened session across hard refresh (cleared on logout / deselect). */
+const INSTR_ACTIVE_SESSION_KEY = 'sqa_instructor_active_session';
+const INSTR_ACTIVE_SESSION_LEGACY = 'tdx_instructor_active_session';
+/** Full onboarding welcome in the questions panel only after logout, new registration, or clearing the active session from the list. */
+const INSTR_ONBOARDING_WELCOME_KEY = 'sqa_instructor_onboarding_welcome';
+const INSTR_ONBOARDING_LEGACY = 'tdx_instructor_onboarding_welcome';
+const INSTR_NAME_KEY = 'sqa_instructor_name';
+const INSTR_NAME_LEGACY = 'tdx_instructor_name';
+const INSTR_DEMO_FLAG = 'sqa_is_demo';
+const INSTR_DEMO_LEGACY = 'tdx_is_demo';
+const DEMO_SESSIONS_HIDDEN_KEY = 'sqa_sessions_hidden_demo';
+const DEMO_SESSIONS_HIDDEN_LEGACY = 'tdx_sessions_hidden_demo';
+
+function readInstructorActiveSessionFromStorage() {
+  try {
+    let v = sessionStorage.getItem(INSTR_ACTIVE_SESSION_KEY);
+    if (v) return v;
+    v = sessionStorage.getItem(INSTR_ACTIVE_SESSION_LEGACY);
+    if (v) {
+      sessionStorage.setItem(INSTR_ACTIVE_SESSION_KEY, v);
+      sessionStorage.removeItem(INSTR_ACTIVE_SESSION_LEGACY);
+    }
+    return v;
+  } catch (e) { return null; }
+}
+
+function readInstructorNameFromStorage() {
+  try {
+    let v = sessionStorage.getItem(INSTR_NAME_KEY);
+    if (v) return v;
+    v = sessionStorage.getItem(INSTR_NAME_LEGACY);
+    if (v) {
+      sessionStorage.setItem(INSTR_NAME_KEY, v);
+      sessionStorage.removeItem(INSTR_NAME_LEGACY);
+    }
+    return v;
+  } catch (e) { return null; }
+}
+function writeInstructorNameToStorage(name) {
+  try {
+    sessionStorage.setItem(INSTR_NAME_KEY, name);
+    sessionStorage.removeItem(INSTR_NAME_LEGACY);
+  } catch (e) {}
+}
+function readIsDemoFromStorage() {
+  try {
+    let v = sessionStorage.getItem(INSTR_DEMO_FLAG);
+    if (v != null) return v;
+    v = sessionStorage.getItem(INSTR_DEMO_LEGACY);
+    if (v != null) {
+      sessionStorage.setItem(INSTR_DEMO_FLAG, v);
+      sessionStorage.removeItem(INSTR_DEMO_LEGACY);
+    }
+    return v;
+  } catch (e) { return null; }
+}
+function writeIsDemoToStorage(val) {
+  try {
+    sessionStorage.setItem(INSTR_DEMO_FLAG, val);
+    sessionStorage.removeItem(INSTR_DEMO_LEGACY);
+  } catch (e) {}
+}
+function clearInstructorBrowserSessionKeys() {
+  try {
+    sessionStorage.removeItem(INSTR_NAME_KEY);
+    sessionStorage.removeItem(INSTR_NAME_LEGACY);
+    sessionStorage.removeItem(INSTR_DEMO_FLAG);
+    sessionStorage.removeItem(INSTR_DEMO_LEGACY);
+  } catch (e) {}
+}
+
+function instructorOnboardingWelcomePending() {
+  try {
+    if (sessionStorage.getItem(INSTR_ONBOARDING_WELCOME_KEY) === '1') return true;
+    if (sessionStorage.getItem(INSTR_ONBOARDING_LEGACY) === '1') {
+      sessionStorage.setItem(INSTR_ONBOARDING_WELCOME_KEY, '1');
+      sessionStorage.removeItem(INSTR_ONBOARDING_LEGACY);
+      return true;
+    }
+    return false;
+  } catch (e) { return false; }
+}
+function clearInstructorOnboardingWelcomeFlag() {
+  try {
+    sessionStorage.removeItem(INSTR_ONBOARDING_WELCOME_KEY);
+    sessionStorage.removeItem(INSTR_ONBOARDING_LEGACY);
+  } catch (e) {}
+}
+
+function persistInstructorActiveSession(code) {
+  try {
+    if (code) {
+      sessionStorage.setItem(INSTR_ACTIVE_SESSION_KEY, code);
+      sessionStorage.removeItem(INSTR_ACTIVE_SESSION_LEGACY);
+    } else {
+      sessionStorage.removeItem(INSTR_ACTIVE_SESSION_KEY);
+      sessionStorage.removeItem(INSTR_ACTIVE_SESSION_LEGACY);
+    }
+  } catch (e) {}
+}
+
+function tryRestoreInstructorActiveSessionFromList() {
+  if (isDemoMode || activeSessionCode) return;
+  let saved = null;
+  try { saved = readInstructorActiveSessionFromStorage(); } catch (e) { return; }
+  if (!saved) return;
+  if (!allSessions.length) {
+    return;
+  }
+  if (allSessions.some(s => s.id === saved)) {
+    selectSession(saved);
+    return;
+  }
+  try {
+    sessionStorage.removeItem(INSTR_ACTIVE_SESSION_KEY);
+    sessionStorage.removeItem(INSTR_ACTIVE_SESSION_LEGACY);
+  } catch (e) {}
+}
 
 let db, storage = null, activeSessionCode = null, allQuestions = [];
 let currentFilter = 'all', currentSort = 'recent';
 let deleteTargetId = null, unsubQuestions = null, unsubSession = null;
 let allSessions = [], currentInstructor = null, isDemoMode = false;
+/** After first Firestore merge for "My sessions" (avoids treating pre-load as an empty list). */
+let instructorSessionsHydrated = false;
 let questionPages = [];
 let currentQuestionPage = 0;
 let hasMoreOlder = false, questionsLoading = false;
 const answerDrafts = {};
 const pendingAnswerImages = {};
 
-const DEMO_SESSION_CODE = 'TDX-DEMO';
+const DEMO_SESSION_CODE = 'SQA-DEMO';
 const DEMO_SESSION = {
   id: DEMO_SESSION_CODE,
   className: 'Agentforce Instructor Series',
@@ -1039,9 +1438,6 @@ const DEMO_SESSION = {
   sessionTime: '10:00 AM',
   room: 'Hall D — Room 214',
   description: 'Intro to Agentforce: architecture, agent types, and how to build your first autonomous agent without code.',
-  bulletinTitle: 'Before we start',
-  bulletinBody: 'Wifi and lab links go here. Line breaks and https:// links are supported.',
-  bulletinImageUrls: [],
   sessionNoteShow: true,
   sessionNoteTitle: 'Quick links',
   sessionNoteBody: 'Example: https://trailhead.salesforce.com — appears under Session for students.',
@@ -1060,9 +1456,19 @@ const DEMO_QUESTIONS_TEMPLATE = [
     text:'Can we use custom LLMs with Agentforce or is it locked to the Einstein models?' },
 ];
 
+function instructorWelcomeQuestionsHtml() {
+  const t = document.getElementById('tmpl-instructor-welcome');
+  const inner = t && t.innerHTML ? String(t.innerHTML).trim() : '';
+  return inner || '<div class="empty-state instructor-welcome"><p class="instructor-welcome-lead">Select a session from <strong>My sessions</strong> to continue.</p></div>';
+}
+
+function instructorCompactSelectSessionHtml() {
+  return '<div class="empty-state instructor-welcome"><p class="instructor-welcome-lead">Select a session from <strong>My sessions</strong> to continue.</p></div>';
+}
+
 function genCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = 'TDX-';
+  let code = 'SQA-';
   for (let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
   return code;
 }
@@ -1140,7 +1546,7 @@ function formatQuestionWhen(ts) {
   });
 }
 
-// Simple hash — not cryptographic, but prevents plain-text storage
+// Simple hash — not cryptographic, but prevents plain-text storage (salt prefix unchanged for existing accounts)
 async function hashPin(pin) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('tdxqa:' + pin));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -1161,8 +1567,8 @@ window.addEventListener('load', () => {
     } catch(e) { console.warn('Firebase init failed:', e); }
   }
   document.addEventListener('paste', onAnswerBoxPaste, true);
-  const savedName = sessionStorage.getItem('tdx_instructor_name');
-  const savedDemo = sessionStorage.getItem('tdx_is_demo');
+  const savedName = readInstructorNameFromStorage();
+  const savedDemo = readIsDemoFromStorage();
   if (savedName) {
     currentInstructor = savedName;
     if (savedDemo === 'true') isDemoMode = true;
@@ -1191,7 +1597,7 @@ async function instructorLogin() {
     const hash = await hashPin(pin);
     if (hash !== stored.pinHash) { errEl.textContent = 'Incorrect PIN. Try again.'; return; }
     currentInstructor = stored.displayName;
-    sessionStorage.setItem('tdx_instructor_name', currentInstructor);
+    writeInstructorNameToStorage(currentInstructor);
     showDashboard();
   } catch(e) { errEl.textContent = 'Connection error. Please try again.'; }
 }
@@ -1212,38 +1618,52 @@ async function instructorRegister() {
     await db.collection('instructors').doc(id).set({
       displayName: name,
       pinHash: hash,
+      sessionsHiddenFromList: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     currentInstructor = name;
-    sessionStorage.setItem('tdx_instructor_name', currentInstructor);
+    writeInstructorNameToStorage(currentInstructor);
+    try {
+      sessionStorage.setItem(INSTR_ONBOARDING_WELCOME_KEY, '1');
+      sessionStorage.removeItem(INSTR_ONBOARDING_LEGACY);
+    } catch (e) {}
     showDashboard();
   } catch(e) { errEl.textContent = 'Error creating account. Please try again.'; }
 }
 
 function instructorLogout() {
-  sessionStorage.removeItem('tdx_instructor_name');
-  sessionStorage.removeItem('tdx_is_demo');
+  try {
+    sessionStorage.setItem(INSTR_ONBOARDING_WELCOME_KEY, '1');
+    sessionStorage.removeItem(INSTR_ONBOARDING_LEGACY);
+  } catch (e) {}
+  clearInstructorBrowserSessionKeys();
+  persistInstructorActiveSession(null);
   currentInstructor = null;
   isDemoMode = false;
   studentViewOpen = false;
   activeSessionCode = null;
   allSessions = [];
   allQuestions = [];
+  questionPages = [];
+  currentQuestionPage = 0;
+  hasMoreOlder = false;
   if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
   if (unsubSession) { unsubSession(); unsubSession = null; }
   // reset UI
   document.getElementById('student-demo-panel').style.display = 'none';
   document.getElementById('student-view-btn').style.display = 'none';
-  document.getElementById('active-code').textContent = '—';
+  syncActiveCodeBadge();
   document.getElementById('session-dependent-sections').style.display = 'none';
   document.getElementById('sessions-list').innerHTML = '';
-  document.getElementById('questions-list').innerHTML = '<div class="empty-state"><p style="font-size:0.95rem;">Select or create a session to get started.</p></div>';
+  document.getElementById('questions-list').innerHTML = instructorCompactSelectSessionHtml();
+  updateInstructorPaginationUi();
   document.getElementById('instructor-list').innerHTML = '<div style="font-size:0.82rem;color:var(--text-light);text-align:center;padding:0.5rem">No instructors added yet</div>';
   document.getElementById('instructor-name-bar').textContent = '';
   // reset stats
   ['stat-total','stat-answered','stat-pending','stat-pinned','fc-all','fc-pinned','fc-pending','fc-answered'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '0';
   });
+  document.documentElement.classList.remove('instr-restoring-session');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('signin-name').value = '';
@@ -1256,14 +1676,15 @@ function instructorLogout() {
 function enterDemoMode() {
   isDemoMode = true;
   currentInstructor = 'Alex Rivera (Demo)';
-  sessionStorage.setItem('tdx_instructor_name', currentInstructor);
-  sessionStorage.setItem('tdx_is_demo', 'true');
+  writeInstructorNameToStorage(currentInstructor);
+  writeIsDemoToStorage('true');
   showDashboard();
 }
 
 function showDashboard() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'flex';
+  document.documentElement.classList.remove('instr-restoring-session');
   // reset session state for fresh login
   activeSessionCode = null;
   allSessions = [];
@@ -1276,9 +1697,7 @@ function showDashboard() {
   const dashSearch = document.getElementById('instr-questions-search');
   if (dashSearch) dashSearch.value = '';
   if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
-  document.getElementById('active-code').textContent = '—';
   document.getElementById('session-dependent-sections').style.display = 'none';
-  document.getElementById('questions-list').innerHTML = '<div class="empty-state"><p style="font-size:0.95rem;">Select or create a session to get started.</p></div>';
   const nameEl = document.getElementById('instructor-name-bar');
   if (nameEl) nameEl.textContent = currentInstructor || 'Instructor';
   // show/hide demo UI
@@ -1294,23 +1713,58 @@ function showDashboard() {
     document.getElementById('student-view-btn').style.display = 'none';
   }
   isDemoMode ? loadDemoSessions() : loadSessions();
+  if (!isDemoMode) {
+    instructorSessionsHydrated = false;
+    syncActiveCodeBadge();
+    let restorePending = false;
+    try { restorePending = !!readInstructorActiveSessionFromStorage(); } catch (e) {}
+    const ql = document.getElementById('questions-list');
+    if (restorePending) {
+      ql.innerHTML = '<div class="empty-state" style="text-align:center;padding:2rem;color:var(--text-muted);font-size:0.9rem">Loading session…</div>';
+    } else {
+      ql.innerHTML = '<div class="empty-state" style="text-align:center;padding:2rem;color:var(--text-muted);font-size:0.9rem">Loading sessions…</div>';
+    }
+  }
+  updateInstructorPaginationUi();
 }
 
 function loadDemoSessions() {
-  allSessions = [DEMO_SESSION];
+  instructorSessionsHydrated = true;
+  const hidden = getDemoHiddenSessionIds();
+  allSessions = [DEMO_SESSION].filter(s => !hidden.includes(s.id));
   const qs = DEMO_QUESTIONS_TEMPLATE.map(q => ({...q, voters: [...q.voters]}));
   questionPages = [{ questions: qs, endSnap: null }];
   currentQuestionPage = 0;
   hasMoreOlder = false;
   rebuildAllQuestions();
-  activeSessionCode = DEMO_SESSION_CODE;
-  renderSessionsList();
-  renderQuestions();
-  updateStats();
-  updateInstructorPaginationUi();
-  fillSessionForm(DEMO_SESSION);
-  document.getElementById('active-code').textContent = DEMO_SESSION_CODE;
-  document.getElementById('session-dependent-sections').style.display = 'block';
+  if (allSessions.length) {
+    activeSessionCode = DEMO_SESSION_CODE;
+    renderSessionsList();
+    renderQuestions();
+    updateStats();
+    updateInstructorPaginationUi();
+    fillSessionForm(DEMO_SESSION);
+    syncActiveCodeBadge();
+    document.getElementById('session-dependent-sections').style.display = 'block';
+    persistInstructorActiveSession(DEMO_SESSION_CODE);
+  } else {
+    if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+    activeSessionCode = null;
+    questionPages = [];
+    currentQuestionPage = 0;
+    hasMoreOlder = false;
+    rebuildAllQuestions();
+    syncActiveCodeBadge();
+    document.getElementById('session-dependent-sections').style.display = 'none';
+    document.getElementById('questions-list').innerHTML = instructorWelcomeQuestionsHtml();
+    ['stat-total', 'stat-answered', 'stat-pending', 'stat-pinned', 'fc-all', 'fc-pinned', 'fc-pending', 'fc-answered'].forEach(id => {
+      const hel = document.getElementById(id);
+      if (hel) hel.textContent = '0';
+    });
+    updateInstructorPaginationUi();
+    renderSessionsList();
+    persistInstructorActiveSession(null);
+  }
 }
 
 function fillSessionForm(s) {
@@ -1318,9 +1772,6 @@ function fillSessionForm(s) {
   document.getElementById('sf-session').value = s.sessionName || '';
   document.getElementById('sf-room').value = s.room || '';
   document.getElementById('sf-desc').value = s.description || '';
-  document.getElementById('bulletin-title-input').value = s.bulletinTitle || '';
-  document.getElementById('bulletin-body-input').value = s.bulletinBody || '';
-  document.getElementById('bulletin-urls-input').value = Array.isArray(s.bulletinImageUrls) ? s.bulletinImageUrls.join('\n') : '';
   document.getElementById('session-note-show').checked = (s.sessionNoteShow !== false);
   document.getElementById('session-note-title-input').value = s.sessionNoteTitle || '';
   document.getElementById('session-note-body-input').value = s.sessionNoteBody || '';
@@ -1435,11 +1886,17 @@ function buildInstructorPaginationHtml() {
 }
 
 function updateInstructorPaginationUi() {
+  const chrome = document.getElementById('instr-questions-chrome');
+  if (chrome) {
+    const on = !!activeSessionCode;
+    chrome.classList.toggle('is-visible', on);
+    chrome.setAttribute('aria-hidden', on ? 'false' : 'true');
+  }
   const top = document.getElementById('instr-pagination-top');
   const bottom = document.getElementById('instr-pagination-bottom');
   if (top && bottom) {
     const searching = !!getInstructorSearchQuery();
-    const show = !searching && !!(activeSessionCode && (questionPages[0] || currentQuestionPage > 0));
+    const show = !searching && !!activeSessionCode && questionPages.length > 0;
     const html = show ? buildInstructorPaginationHtml() : '';
     top.innerHTML = html;
     bottom.innerHTML = html;
@@ -1448,29 +1905,6 @@ function updateInstructorPaginationUi() {
     top.style.display = show ? 'flex' : 'none';
     bottom.style.display = show ? 'flex' : 'none';
   }
-}
-
-function saveBulletin() {
-  if (!activeSessionCode) { showToast('Select a session first.'); return; }
-  const bulletinTitle = document.getElementById('bulletin-title-input').value.trim();
-  const bulletinBody = document.getElementById('bulletin-body-input').value.trim();
-  const bulletinImageUrls = parseBulletinUrls(document.getElementById('bulletin-urls-input').value);
-  if (isDemoMode) {
-    const s = allSessions.find(x => x.id === activeSessionCode);
-    if (s) {
-      s.bulletinTitle = bulletinTitle;
-      s.bulletinBody = bulletinBody;
-      s.bulletinImageUrls = bulletinImageUrls;
-    }
-    showToast('Bulletin updated (demo).');
-    return;
-  }
-  db.collection('sessions').doc(activeSessionCode).update({
-    bulletinTitle,
-    bulletinBody,
-    bulletinImageUrls,
-    bulletinUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(() => showToast('Bulletin saved.')).catch(e => showToast('Error: ' + e.message));
 }
 
 function saveSessionNote() {
@@ -1497,44 +1931,6 @@ function saveSessionNote() {
     sessionNoteImageUrls,
     sessionNoteUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }).then(() => showToast('Session note saved.')).catch(e => showToast('Error: ' + e.message));
-}
-
-function duplicateSessionFromCurrent() {
-  if (!activeSessionCode) { showToast('Select a session first.'); return; }
-  if (isDemoMode) { showToast('Exit demo to duplicate into Firebase.'); return; }
-  db.collection('sessions').doc(activeSessionCode).get().then(doc => {
-    if (!doc.exists) { showToast('Session not found.'); return; }
-    const d = doc.data();
-    const code = genCode();
-    const ownerId = nameToId(currentInstructor || '');
-    const newName = (d.sessionName || d.className || 'Session').trim() + ' (copy)';
-    return db.collection('sessions').doc(code).set({
-      className: d.className || '',
-      sessionName: newName,
-      instructorNames: currentInstructor || '',
-      instructors: currentInstructor ? [currentInstructor] : [],
-      sessionDate: d.sessionDate || '',
-      sessionTime: d.sessionTime || '',
-      room: d.room || '',
-      description: d.description || '',
-      bulletinTitle: d.bulletinTitle || '',
-      bulletinBody: d.bulletinBody || '',
-      bulletinImageUrls: Array.isArray(d.bulletinImageUrls) ? [...d.bulletinImageUrls] : [],
-      sessionNoteShow: d.sessionNoteShow !== false,
-      sessionNoteTitle: d.sessionNoteTitle || '',
-      sessionNoteBody: d.sessionNoteBody || '',
-      sessionNoteImageUrls: Array.isArray(d.sessionNoteImageUrls) ? [...d.sessionNoteImageUrls] : [],
-      ownerId,
-      ownerName: currentInstructor || '',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(() => {
-      showToast('New session: ' + code);
-      const sessionData = { id: code, className: d.className || '', sessionName: newName, instructorNames: currentInstructor || '', instructors: currentInstructor ? [currentInstructor] : [], sessionDate: d.sessionDate || '', sessionTime: d.sessionTime || '', room: d.room || '', description: d.description || '', bulletinTitle: d.bulletinTitle || '', bulletinBody: d.bulletinBody || '', bulletinImageUrls: Array.isArray(d.bulletinImageUrls) ? [...d.bulletinImageUrls] : [], sessionNoteShow: d.sessionNoteShow !== false, sessionNoteTitle: d.sessionNoteTitle || '', sessionNoteBody: d.sessionNoteBody || '', sessionNoteImageUrls: Array.isArray(d.sessionNoteImageUrls) ? [...d.sessionNoteImageUrls] : [], ownerId, ownerName: currentInstructor || '' };
-      allSessions.unshift(sessionData);
-      renderSessionsList();
-      selectSession(code);
-    });
-  }).catch(e => showToast('Error: ' + e.message));
 }
 
 function goInstructorOlderPage() {
@@ -1732,12 +2128,21 @@ function loadSessions() {
         const bt = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
         return bt - at;
       });
-      // Also load sessions this instructor has manually joined
+      // Also load sessions this instructor has manually joined + apply per-instructor "hidden from list"
       db.collection('instructors').doc(ownerId).get().then(doc => {
         const joinedCodes = doc.exists && doc.data().joinedSessions ? doc.data().joinedSessions : [];
-        if (!joinedCodes.length) {
-          allSessions = owned;
+        const hidden = doc.exists && Array.isArray(doc.data().sessionsHiddenFromList) ? doc.data().sessionsHiddenFromList : [];
+        const hiddenSet = new Set(hidden);
+        const applyHidden = (arr) => arr.filter(s => s && !hiddenSet.has(s.id));
+        const mergeAndRender = (joined) => {
+          allSessions = applyHidden([...owned, ...joined]);
+          instructorSessionsHydrated = true;
           renderSessionsList();
+          tryRestoreInstructorActiveSessionFromList();
+          if (!isDemoMode && !activeSessionCode) renderQuestions();
+        };
+        if (!joinedCodes.length) {
+          mergeAndRender([]);
           return;
         }
         Promise.all(joinedCodes.map(code => db.collection('sessions').doc(code).get()))
@@ -1745,43 +2150,109 @@ function loadSessions() {
             const joined = docs
               .filter(d => d.exists && !owned.find(o => o.id === d.id))
               .map(d => ({id: d.id, ...d.data()}));
-            allSessions = [...owned, ...joined];
-            renderSessionsList();
+            mergeAndRender(joined);
           });
       });
     }, err => {
       // If query fails (e.g. no index), show empty and log
       console.error('loadSessions error:', err);
       allSessions = [];
+      instructorSessionsHydrated = true;
       renderSessionsList();
+      if (!isDemoMode && !activeSessionCode) renderQuestions();
       showToast('Error loading sessions: ' + err.message);
     });
+}
+
+function getDemoHiddenSessionIds() {
+  try {
+    const fromNew = sessionStorage.getItem(DEMO_SESSIONS_HIDDEN_KEY);
+    const fromLeg = sessionStorage.getItem(DEMO_SESSIONS_HIDDEN_LEGACY);
+    const raw = fromNew || fromLeg;
+    if (!raw) return [];
+    if (fromLeg && !fromNew) {
+      sessionStorage.setItem(DEMO_SESSIONS_HIDDEN_KEY, raw);
+      sessionStorage.removeItem(DEMO_SESSIONS_HIDDEN_LEGACY);
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) { return []; }
 }
 
 function renderSessionsList() {
   const el = document.getElementById('sessions-list');
   if (!allSessions.length) {
     el.innerHTML = `<div style="font-size:0.82rem;color:var(--text-light);text-align:center;padding:0.75rem;line-height:1.6;">
-      No sessions yet.<br>Create one or join an existing session with a code.
+      No sessions in your list.<br>Create one, join with a code, or un-hide by joining a hidden session again.
     </div>`;
     return;
   }
-  el.innerHTML = allSessions.map(s => `
-    <button onclick="selectSession('${s.id}')"
-      style="padding:0.5rem 0.75rem;border-radius:8px;border:1.5px solid ${activeSessionCode===s.id?'var(--accent)':'var(--border)'};
-      background:${activeSessionCode===s.id?'var(--accent-light)':'white'};font-family:inherit;font-size:0.82rem;
-      color:${activeSessionCode===s.id?'var(--accent)':'var(--text-muted)'};cursor:pointer;text-align:left;width:100%;
-      font-weight:${activeSessionCode===s.id?'500':'400'}">
-      <div style="font-family:'DM Mono',monospace;font-size:0.75rem;letter-spacing:0.08em">${s.id}</div>
-      <div style="margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.sessionName||s.className||'Untitled'}</div>
-    </button>
-  `).join('');
+  el.innerHTML = allSessions.map(s => {
+    const active = activeSessionCode === s.id;
+    const title = esc(s.sessionName || s.className || 'Untitled');
+    return `<div class="session-list-row">
+      <button type="button" class="session-select-btn${active ? ' session-select-btn--active' : ''}" onclick="selectSession('${s.id}')">
+        <div style="font-family:'DM Mono',monospace;font-size:0.75rem;letter-spacing:0.08em">${esc(s.id)}</div>
+        <div style="margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${title}</div>
+      </button>
+      <button type="button" class="session-hide-btn" onclick="hideSessionFromList('${s.id}', event)" title="Hide from your list" aria-label="Hide session from list">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function hideSessionFromList(sessionCode, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  if (!sessionCode) return;
+  const clearActivePanel = () => {
+    if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+    activeSessionCode = null;
+    const iqSearch = document.getElementById('instr-questions-search');
+    if (iqSearch) iqSearch.value = '';
+    questionPages = [];
+    currentQuestionPage = 0;
+    hasMoreOlder = false;
+    rebuildAllQuestions();
+    renderQuestions();
+    ['stat-total', 'stat-answered', 'stat-pending', 'stat-pinned', 'fc-all', 'fc-pinned', 'fc-pending', 'fc-answered'].forEach(id => {
+      const hel = document.getElementById(id);
+      if (hel) hel.textContent = '0';
+    });
+    updateInstructorPaginationUi();
+    syncActiveCodeBadge();
+    document.getElementById('session-dependent-sections').style.display = 'none';
+    persistInstructorActiveSession(null);
+  };
+  const finishHide = () => {
+    const wasActive = activeSessionCode === sessionCode;
+    allSessions = allSessions.filter(s => s.id !== sessionCode);
+    if (wasActive) {
+      if (allSessions.length) selectSession(allSessions[0].id);
+      else clearActivePanel();
+    }
+    renderSessionsList();
+    showToast('Removed from your list. Join with the code again to restore it.');
+  };
+
+  if (isDemoMode) {
+    const arr = getDemoHiddenSessionIds();
+    if (!arr.includes(sessionCode)) arr.push(sessionCode);
+    sessionStorage.setItem(DEMO_SESSIONS_HIDDEN_KEY, JSON.stringify(arr));
+    try { sessionStorage.removeItem(DEMO_SESSIONS_HIDDEN_LEGACY); } catch (e) {}
+    finishHide();
+    return;
+  }
+  const ownerId = nameToId(currentInstructor || '');
+  db.collection('instructors').doc(ownerId).update({
+    sessionsHiddenFromList: firebase.firestore.FieldValue.arrayUnion(sessionCode)
+  }).then(finishHide).catch(e => showToast('Could not update list: ' + (e.message || e)));
 }
 
 function selectSession(code) {
   activeSessionCode = code;
+  clearInstructorOnboardingWelcomeFlag();
+  if (!isDemoMode) persistInstructorActiveSession(code);
   renderSessionsList();
-  document.getElementById('active-code').textContent = code;
+  syncActiveCodeBadge();
   document.getElementById('session-dependent-sections').style.display = 'block';
   const s = allSessions.find(x => x.id === code);
   if (s) fillSessionForm(s);
@@ -1819,6 +2290,7 @@ function selectSession(code) {
         updateInstructorPaginationUi();
       }
     });
+  updateInstructorPaginationUi();
 }
 
 function openJoinSessionModal() {
@@ -1836,14 +2308,21 @@ function instructorJoinSession() {
   if (!code) { document.getElementById('join-session-error').textContent = 'Please enter a session code.'; return; }
   db.collection('sessions').doc(code).get().then(doc => {
     if (!doc.exists) { document.getElementById('join-session-error').textContent = 'Session not found. Check the code.'; return; }
-    // Add to instructor's joined sessions list in Firestore
+    // Add to instructor's joined sessions list in Firestore; un-hide if it was hidden from this list only
     const ownerId = nameToId(currentInstructor || '');
-    db.collection('instructors').doc(ownerId).update({
-      joinedSessions: firebase.firestore.FieldValue.arrayUnion(code)
-    }).catch(() => {
-      // If field doesn't exist yet, set it
-      db.collection('instructors').doc(ownerId).update({
-        joinedSessions: [code]
+    const joinPayload = {
+      joinedSessions: firebase.firestore.FieldValue.arrayUnion(code),
+      sessionsHiddenFromList: firebase.firestore.FieldValue.arrayRemove(code)
+    };
+    db.collection('instructors').doc(ownerId).update(joinPayload).catch(() => {
+      db.collection('instructors').doc(ownerId).get().then(idoc => {
+        const d = idoc.exists ? idoc.data() : {};
+        const joined = Array.isArray(d.joinedSessions) ? [...new Set([...d.joinedSessions, code])] : [code];
+        const hidden = Array.isArray(d.sessionsHiddenFromList) ? d.sessionsHiddenFromList.filter(c => c !== code) : [];
+        return db.collection('instructors').doc(ownerId).set(
+          { joinedSessions: joined, sessionsHiddenFromList: hidden },
+          { merge: true }
+        );
       });
     });
     const sessionData = {id: code, ...doc.data()};
@@ -1894,9 +2373,6 @@ function confirmCreateSession() {
     sessionTime: timeVal ? formatDisplayTime(timeVal) : '',
     room: document.getElementById('new-sf-room').value.trim(),
     description: document.getElementById('new-sf-desc').value.trim(),
-    bulletinTitle: '',
-    bulletinBody: '',
-    bulletinImageUrls: [],
     sessionNoteShow: true,
     sessionNoteTitle: '',
     sessionNoteBody: '',
@@ -1934,6 +2410,21 @@ function formatDisplayTime(t) {
   const [h,m] = t.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${h%12||12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+function syncActiveCodeBadge() {
+  const el = document.getElementById('active-code');
+  if (!el) return;
+  if (!activeSessionCode) {
+    el.style.display = 'none';
+    el.textContent = '';
+    el.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  el.style.display = '';
+  el.textContent = activeSessionCode;
+  el.setAttribute('aria-hidden', 'false');
+  el.title = 'Click to copy session code';
 }
 
 function copyCode() {
@@ -1992,6 +2483,23 @@ function htmlQuestionBodyInstr(q) {
 
 function renderQuestions() {
   captureAnswerDrafts();
+  if (!activeSessionCode) {
+    const list0 = document.getElementById('questions-list');
+    if (list0) {
+      if (instructorOnboardingWelcomePending()) {
+        list0.innerHTML = instructorWelcomeQuestionsHtml();
+        clearInstructorOnboardingWelcomeFlag();
+      } else if (instructorSessionsHydrated && !allSessions.length) {
+        list0.innerHTML = instructorWelcomeQuestionsHtml();
+      } else {
+        list0.innerHTML = instructorCompactSelectSessionHtml();
+      }
+    }
+    restoreAnswerDrafts();
+    syncAnswerPastePreviews();
+    updateInstructorPaginationUi();
+    return;
+  }
   const searchQ = getInstructorSearchQuery();
   const corpus = getAllCachedInstructorQuestionsForStats();
   let qs = searchQ ? filterInstructorQuestionsBySearchQuery(corpus, searchQ) : [...allQuestions];
@@ -2077,6 +2585,7 @@ function renderQuestions() {
   }).join('');
   restoreAnswerDrafts();
   syncAnswerPastePreviews();
+  fillFmtEmojiPickerGrids();
 }
 
 function saveAnswer(id) {
@@ -2314,12 +2823,18 @@ function sdemoOpenEdit(id) {
     <button type="button" class="fmt-btn fmt-btn-mono" title="Block" onclick="insertSlackFormat('sdemo-edit-ta-${id}','fenced')">{ }</button>
     <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-edit-ta-${id}','👍')">👍</button>
     <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-edit-ta-${id}','✅')">✅</button>
+    <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-edit-ta-${id}','💡')">💡</button>
+    <details class="fmt-emoji-more">
+      <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+      <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="sdemo-edit-ta-${id}" role="group" aria-label="More emojis"></div>
+    </details>
   </div>
   <textarea id="sdemo-edit-ta-${id}" style="width:100%;border:1.5px solid #0070d2;border-radius:6px;padding:.5rem .7rem;font-family:inherit;font-size:.88rem;resize:vertical;outline:none;background:#fff;">${esc(current)}</textarea>
   <div style="display:flex;gap:.4rem;margin-top:.4rem;justify-content:flex-end;">
     <button onclick="sdemoCancelEdit('${id}','${esc(current)}')" style="padding:3px 10px;border:1.5px solid #e2ddd6;border-radius:6px;font-family:inherit;font-size:.78rem;cursor:pointer;background:none;">Cancel</button>
     <button onclick="sdemoSaveEdit('${id}')" style="padding:3px 10px;background:#0070d2;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:.78rem;cursor:pointer;">Save</button>
   </div>`;
+  fillFmtEmojiPickerGrids();
 }
 
 function sdemoSaveEdit(id) {
@@ -2397,6 +2912,10 @@ function sdemoRender() {
 // patch resetDemo to also reset student view state and re-render if open
 // patch resetDemo to also reset student view state and re-render if open
 function resetDemo() {
+  try {
+    sessionStorage.removeItem(DEMO_SESSIONS_HIDDEN_KEY);
+    sessionStorage.removeItem(DEMO_SESSIONS_HIDDEN_LEGACY);
+  } catch (e) {}
   const qs = DEMO_QUESTIONS_TEMPLATE.map(q => ({...q, voters: [...q.voters]}));
   questionPages = [{ questions: qs, endSnap: null }];
   currentQuestionPage = 0;
@@ -2406,13 +2925,14 @@ function resetDemo() {
   rebuildAllQuestions();
   allSessions = [DEMO_SESSION];
   activeSessionCode = DEMO_SESSION_CODE;
+  persistInstructorActiveSession(DEMO_SESSION_CODE);
   sdemoUserId = 'demo-student-' + Math.random().toString(36).slice(2,8);
   renderSessionsList();
   renderQuestions();
   updateStats();
   updateInstructorPaginationUi();
   fillSessionForm(DEMO_SESSION);
-  document.getElementById('active-code').textContent = DEMO_SESSION_CODE;
+  syncActiveCodeBadge();
   if (studentViewOpen) sdemoRender();
   showToast('Demo data reset!');
 }
@@ -2456,6 +2976,284 @@ function insertSlackFormat(textareaId, mode) {
   ta.setSelectionRange(ns, ne);
 }
 
+/** Large Unicode emoji set — system font renders each; scroll for more. */
+const FORMAT_EMOJI_PICKER_RAW = "😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙🥲😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕😟🙁☹😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾👋🤚🖐✋🖖👌🤌🤏✌🤞🤟🤘🤙👈👉👆🖕👇☝👍👎✊👊🤛🤜👏🙌👐🤲🤝🙏✍💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🫀🫁🦷🦴👀👁👅👄❤🧡💛💚💙💜🖤🤍🤎💔❣💕💞💓💗💖💘💝💟☮✝☪🕉☸✡🔯🪄🪅🎴🎭🖼🎨🔮🧿🐵🐒🦍🦧🐶🐕🦮🐩🐺🦊🦝🐱🐈🦁🐯🐅🐆🐴🐎🦄🦓🦌🦬🐮🐂🐃🐄🐷🐖🐗🐽🐏🐑🐐🐪🐫🦙🦒🐘🦣🦏🦛🐭🐁🐀🐹🐰🐇🐿🦫🦔🦇🐻🐨🐼🐾🦃🐔🐓🐣🐤🐥🐦🐧🕊🦅🦆🦢🦉🦤🪶🦩🦚🦜🐸🐊🐢🦎🐍🐲🐉🦕🦖🐳🐋🐬🦭🐟🐠🐡🦈🐙🐚🪸🐌🦋🐛🐜🐝🪲🐞🦗🪳🕷🕸🦂🦟🪰🪱🦠💐🌸💮🌹🥀🌺🌻🌼🌷🪻🌱🪴🌲🌳🌴🌵🌾🌿☘🍀🍁🍂🍃🪹🪺🍄🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🍞🥐🥖🫓🥨🥯🥞🧇🧀🍖🍗🥩🥓🍔🍟🍕🌭🥪🌮🌯🫔🥙🧆🥚🍳🥘🍲🫕🥣🥗🍿🧈🧂🥫🍱🍘🍙🍚🍛🍜🍝🍠🍢🍣🍤🍥🥮🍡🥟🥠🥡🦀🦞🦐🦑🦪🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯🍼🥛☕🫖🍵🍶🍾🍷🍸🍹🍺🍻🥂🥃🥤🧋🧃🧉🧊🥢🍽🍴🥄🔪🫙🌍🌎🌏🌐🗺🧭🏔⛰🌋🗻🏕🏖🏜🏝🏞🏟🏛🏗🧱🪨🪵🛖🏘🏚🏠🏡🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🛕🕍⛩🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉♨🎠🛝🎡🎢💈🎪🚂🚃🚄🚅🚆🚇🚈🚉🚊🚝🚞🚋🚌🚍🚎🚐🚑🚒🚓🚔🚕🚖🚗🚘🚙🛻🚚🚛🚜🏎🏍🛵🦽🦼🛺🚲🛴🛹🛼🚏🛣🛤⛽🚨🚥🚦🛑🚧⚓🛟⛵🛶🚤🛳⛴🛥🚢✈🛩🛫🛬🪂💺🚁🚟🚠🚡🛰🚀🛸🪐🌠🌌⚽🏀🏈⚾🥎🎾🏐🏉🥏🎱🪀🏓🏸🏒🏑🥍🏏🪃🥅⛳🪁🏹🎣🤿🥊🥋🎽🛷⛸🥌🎿⛷🏂🏋🤼🤸🤺⛹🤹🧘🏌🏇🧗🚵🚴🏆🥇🥈🥉🏅🎖🏵🎗🎫🎟🩰🎬🎤🎧🎼🎹🥁🪘🎷🎺🎸🪕🎻🪈🎲♟🎯🎳🎮🕹🎰🧩📱📲☎📞📟📠🔋🪫🔌💻🖥🖨⌨🖱🖲💽💾💿📀🧮🎥🎞📽📺📷📸📹📼🔍🔎🕯💡🔦🏮🪔📔📕📖📗📘📙📚📓📒📃📜📄📰🗞📑🔖🏷💰🪙💴💵💶💷💸💳🧾✉📧📨📩📤📥📦📫📪📬📭📮🗳✏✒🖋🖊🖌🖍📝💼📁📂🗂📅📆🗒🗓📇📈📉📊📋📌📍📎🖇📏📐✂🗃🗄🗑🔒🔓🔏🔐🔑🗝🔨🪓⛏⚒🛠🗡⚔🔫🛡🔧🪛🔩⚙🗜⚖🦯🔗⛓🪝🧰🧲🪜💯💢💥💫💦💨🕳💬🗨🗯💭💤🔔🔕📣📢📿🏧🚮🚰♿🚹🚺🚻🚼🚾🛂🛃🛄🛅⚠🚸⛔🚫🚳🚭🚯🚱🚷📵🔞☢☣⬆↗➡↘⬇↙⬅↖↕↔↩↪⤴⤵🔃🔄🔙🔚🔛🔜🔝🛐⚛☯🕎♈♉♊♋♌♍♎♏♐♑♒♓⛎🔀🔁🔂▶⏩⏭⏯◀⏪⏮🔼⏫🔽⏬⏸⏹⏺⏏🎦🔅🔆📶📳📴♀♂⚧✖➕➖➗🟰♾‼⁉❓❔❕❗〰💱💲⚕♻❇✳❎🆎🆑🆘📛🔠🔡🔢🔣🔤⌚⏰⏱⏲🕰🕛🕧🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌝🌞⭐🌟☀🌤⛅🌥☁🌦🌧⛈🌩🌨❄☃⛄🌬🌪🌫🌈☂☔⛱⚡🔥💧🌊🎃🎄🎆🎇🧨✨🎈🎉🎊🎋🎍🎎🎏🎐🎑🧧🎀🎁🧸🪆🃏🀄";
+const FORMAT_EMOJI_PICKER_CHARS = Array.from(FORMAT_EMOJI_PICKER_RAW);
+
+function escFmtAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** Wrap scrollable grid so ▲/▼ hints are not clipped by overflow-y (pseudo-elements scroll away inside the grid). */
+function ensureFmtEmojiGridShell(grid) {
+  if (!grid || !grid.parentNode) return null;
+  const existing = grid.closest('.fmt-emoji-grid-shell');
+  if (existing) {
+    const det = grid.closest('details.fmt-emoji-more') || existing._fmtEmojiDetails;
+    if (det) {
+      det._fmtEmojiShell = existing;
+      existing._fmtEmojiDetails = det;
+    }
+    return existing;
+  }
+  const shell = document.createElement('div');
+  shell.className = 'fmt-emoji-grid-shell';
+  const top = document.createElement('div');
+  top.className = 'fmt-emoji-scroll-hint fmt-emoji-scroll-hint--top is-hidden';
+  top.setAttribute('aria-hidden', 'true');
+  top.textContent = '\u25B2';
+  top.title = 'More emojis above — scroll up';
+  const bot = document.createElement('div');
+  bot.className = 'fmt-emoji-scroll-hint fmt-emoji-scroll-hint--bottom is-hidden';
+  bot.setAttribute('aria-hidden', 'true');
+  bot.textContent = '\u25BC';
+  bot.title = 'More emojis below — scroll down';
+  const parent = grid.parentNode;
+  parent.insertBefore(shell, grid);
+  shell.appendChild(top);
+  shell.appendChild(grid);
+  shell.appendChild(bot);
+  const det = grid.closest('details.fmt-emoji-more');
+  if (det) {
+    det._fmtEmojiShell = shell;
+    shell._fmtEmojiDetails = det;
+  }
+  return shell;
+}
+
+/** Grid may live in a shell portaled to document.body — do not use details.querySelector('.fmt-emoji-grid'). */
+function getFmtEmojiGridForDetails(details) {
+  if (!details) return null;
+  if (details._fmtEmojiShell) return details._fmtEmojiShell.querySelector('.fmt-emoji-grid');
+  return details.querySelector('.fmt-emoji-grid');
+}
+
+/** Move picker out of nested cards so fixed + z-index stacks at the viewport root (avoids sibling paint-order bugs). */
+function mountFmtEmojiShellToBody(details) {
+  if (!details || !details.open) return;
+  const grid = getFmtEmojiGridForDetails(details);
+  if (!grid) return;
+  ensureFmtEmojiGridShell(grid);
+  const shell = details._fmtEmojiShell;
+  if (!shell || shell.parentNode === document.body) return;
+  document.body.appendChild(shell);
+}
+
+function updateFmtEmojiGridOverflowClasses(grid) {
+  if (!grid || !grid.isConnected) return;
+  const sh = grid.scrollHeight;
+  const ch = grid.clientHeight;
+  const EPS = 4;
+  const hasMore = sh > ch + EPS;
+  grid.classList.toggle('fmt-emoji-grid--has-overflow', hasMore);
+  const atEnd = grid.scrollTop + ch >= sh - EPS;
+  grid.classList.toggle('fmt-emoji-grid--scrolled-end', atEnd);
+  const atStart = grid.scrollTop <= EPS;
+  const shell = grid.closest('.fmt-emoji-grid-shell');
+  const hintTop = shell && shell.querySelector('.fmt-emoji-scroll-hint--top');
+  const hintBot = shell && shell.querySelector('.fmt-emoji-scroll-hint--bottom');
+  if (hintTop) {
+    hintTop.classList.toggle('is-hidden', !hasMore);
+    hintTop.classList.toggle('fmt-emoji-scroll-hint--dim', hasMore && atStart);
+    hintTop.title = hasMore && atStart ? 'Top of the list' : 'More emojis above — scroll up';
+  }
+  if (hintBot) {
+    hintBot.classList.toggle('is-hidden', !hasMore);
+    hintBot.classList.toggle('fmt-emoji-scroll-hint--dim', hasMore && atEnd);
+    hintBot.title = hasMore && atEnd ? 'End of the list' : 'More emojis below — scroll down';
+  }
+  /* Grid flags drive inset shadows only (arrows are on .fmt-emoji-grid-shell). */
+  grid.classList.toggle('fmt-emoji-grid--hint-up', hasMore && !atStart);
+  grid.classList.toggle('fmt-emoji-grid--hint-down', hasMore && !atEnd);
+}
+
+function bindFmtEmojiGridResizeObserver(grid) {
+  if (!grid || grid._fmtEmojiRo || typeof ResizeObserver === 'undefined') return;
+  const ro = new ResizeObserver(() => {
+    updateFmtEmojiGridOverflowClasses(grid);
+  });
+  grid._fmtEmojiRo = ro;
+  ro.observe(grid);
+  const shell = grid.closest('.fmt-emoji-grid-shell');
+  if (shell) ro.observe(shell);
+}
+
+function clearFmtEmojiGridDock(grid) {
+  if (!grid) return;
+  const shell = grid.closest('.fmt-emoji-grid-shell');
+  if (shell && shell.parentNode === document.body && shell._fmtEmojiDetails) {
+    const det = shell._fmtEmojiDetails;
+    const sum = det.querySelector('summary.fmt-more-summary');
+    if (sum) det.insertBefore(shell, sum.nextSibling);
+    else det.appendChild(shell);
+  }
+  if (grid._fmtEmojiRo) {
+    grid._fmtEmojiRo.disconnect();
+    grid._fmtEmojiRo = null;
+  }
+  const dock = shell || grid;
+  ['position', 'top', 'right', 'bottom', 'left', 'width', 'maxHeight', 'zIndex', 'margin', 'marginTop', 'marginBottom'].forEach((p) => {
+    try { dock.style.removeProperty(p); } catch (e) {}
+  });
+  grid.classList.remove(
+    'fmt-emoji-grid--flip-above',
+    'fmt-emoji-grid--has-overflow',
+    'fmt-emoji-grid--scrolled-end',
+    'fmt-emoji-grid--hint-up',
+    'fmt-emoji-grid--hint-down'
+  );
+  if (shell) {
+    shell.classList.remove('fmt-emoji-grid-shell--flip-above');
+    shell.querySelectorAll('.fmt-emoji-scroll-hint').forEach((el) => {
+      el.classList.add('is-hidden');
+      el.classList.remove('fmt-emoji-scroll-hint--dim');
+    });
+  }
+}
+
+/** Preferred picker height when viewport allows (panel is position:fixed — not clamped to parent cards). */
+const EMOJI_PANEL_PREFERRED_PX = 380;
+
+function positionFmtEmojiMore(details) {
+  if (!details || !details.open) return;
+  const grid = getFmtEmojiGridForDetails(details);
+  const sum = details.querySelector('summary');
+  if (!grid || !sum) return;
+  ensureFmtEmojiGridShell(grid);
+  const shell = grid.closest('.fmt-emoji-grid-shell');
+  const dock = shell || grid;
+  ['position', 'top', 'right', 'bottom', 'left', 'width', 'maxHeight', 'zIndex', 'margin', 'marginTop', 'marginBottom'].forEach((p) => {
+    try { grid.style.removeProperty(p); } catch (e) {}
+  });
+
+  const rect = sum.getBoundingClientRect();
+  const gap = 8;
+  const vwPad = 8;
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  /* Viewport only: .q-card used to shrink this, but the picker overlays the page and felt unusably small. */
+  const belowSlice = vh - rect.bottom - gap - vwPad;
+  const aboveSlice = rect.top - gap - vwPad;
+  const panelMax = Math.min(480, vh * 0.62);
+  const preferBelow = belowSlice >= Math.min(panelMax, 220) || (belowSlice >= aboveSlice && belowSlice >= 100);
+  grid.classList.remove('fmt-emoji-grid--flip-above');
+  if (shell) shell.classList.remove('fmt-emoji-grid-shell--flip-above');
+
+  const w = Math.min(380, vw - vwPad * 2);
+  let left = rect.right - w;
+  left = Math.max(vwPad, Math.min(left, vw - w - vwPad));
+
+  const preferredH = Math.min(EMOJI_PANEL_PREFERRED_PX, panelMax);
+  let capPx;
+  if (preferBelow) {
+    capPx = Math.max(48, Math.min(preferredH, belowSlice));
+    dock.style.position = 'fixed';
+    dock.style.left = left + 'px';
+    dock.style.right = 'auto';
+    dock.style.width = w + 'px';
+    dock.style.top = (rect.bottom + gap) + 'px';
+    dock.style.bottom = 'auto';
+  } else {
+    capPx = Math.max(48, Math.min(preferredH, aboveSlice));
+    dock.style.position = 'fixed';
+    dock.style.left = left + 'px';
+    dock.style.right = 'auto';
+    dock.style.width = w + 'px';
+    dock.style.top = 'auto';
+    dock.style.bottom = (vh - rect.top + gap) + 'px';
+  }
+  dock.style.maxHeight = capPx + 'px';
+  dock.style.zIndex = '12000';
+  dock.style.margin = '0';
+  requestAnimationFrame(() => updateFmtEmojiGridOverflowClasses(grid));
+}
+
+function disconnectFmtEmojiSummaryObserver(details) {
+  const sum = details && details.querySelector('summary.fmt-more-summary');
+  if (sum && sum._fmtEmojiIo) {
+    sum._fmtEmojiIo.disconnect();
+    sum._fmtEmojiIo = null;
+  }
+}
+
+function initFmtEmojiPickerLayout() {
+  let rafRe = 0;
+  function scheduleEmojiPickerReposition() {
+    cancelAnimationFrame(rafRe);
+    rafRe = requestAnimationFrame(() => {
+      document.querySelectorAll('details.fmt-emoji-more[open]').forEach(positionFmtEmojiMore);
+      document.querySelectorAll('details.fmt-emoji-more[open]').forEach((det) => {
+        const g = getFmtEmojiGridForDetails(det);
+        if (g) updateFmtEmojiGridOverflowClasses(g);
+      });
+    });
+  }
+
+  document.addEventListener('toggle', (e) => {
+    const t = e.target;
+    if (!t || !t.matches || !t.matches('details.fmt-emoji-more')) return;
+    const g = t.querySelector('.fmt-emoji-grid');
+    if (!t.open) {
+      disconnectFmtEmojiSummaryObserver(t);
+      clearFmtEmojiGridDock(getFmtEmojiGridForDetails(t));
+      return;
+    }
+    requestAnimationFrame(() => {
+      const sum = t.querySelector('summary.fmt-more-summary');
+      if (sum && typeof IntersectionObserver !== 'undefined') {
+        disconnectFmtEmojiSummaryObserver(t);
+        sum._fmtEmojiIo = new IntersectionObserver(
+          () => { scheduleEmojiPickerReposition(); },
+          { root: null, threshold: Array.from({ length: 21 }, (_, i) => i / 20) }
+        );
+        sum._fmtEmojiIo.observe(sum);
+      }
+      if (g) ensureFmtEmojiGridShell(g);
+      mountFmtEmojiShellToBody(t);
+      positionFmtEmojiMore(t);
+      const g2 = getFmtEmojiGridForDetails(t);
+      if (!g2) return;
+      updateFmtEmojiGridOverflowClasses(g2);
+      bindFmtEmojiGridResizeObserver(g2);
+      if (!g2._fmtEmojiScrollBound) {
+        g2._fmtEmojiScrollBound = true;
+        g2.addEventListener('scroll', () => updateFmtEmojiGridOverflowClasses(g2), { passive: true });
+      }
+    });
+  }, true);
+
+  /* Scroll does not bubble: capture on window+document catches nested overflow scrollers (e.g. .main-panel, #sdemo-questions). */
+  const cap = { passive: true, capture: true };
+  window.addEventListener('scroll', scheduleEmojiPickerReposition, cap);
+  document.addEventListener('scroll', scheduleEmojiPickerReposition, cap);
+  window.addEventListener('resize', scheduleEmojiPickerReposition);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('scroll', scheduleEmojiPickerReposition, { passive: true });
+    window.visualViewport.addEventListener('resize', scheduleEmojiPickerReposition, { passive: true });
+  }
+}
+
+function fillFmtEmojiPickerGrids() {
+  document.querySelectorAll('.fmt-emoji-grid[data-emoji-picker-autofill]').forEach(grid => {
+    const tid = grid.getAttribute('data-emoji-target-id');
+    if (!tid) return;
+    ensureFmtEmojiGridShell(grid);
+    grid.innerHTML = FORMAT_EMOJI_PICKER_CHARS.map(ch =>
+      '<button type="button" class="fmt-btn fmt-emoji fmt-emoji-picker-cell" data-emoji-target="' + escFmtAttr(tid) + '" data-ch="' + escFmtAttr(ch) + '" title="Insert" aria-label="Insert emoji">' + ch + '</button>'
+    ).join('');
+    requestAnimationFrame(() => {
+      const shell = grid.closest('.fmt-emoji-grid-shell');
+      const det = (shell && shell._fmtEmojiDetails) || grid.closest('details.fmt-emoji-more');
+      if (det && det.open) {
+        mountFmtEmojiShellToBody(det);
+        positionFmtEmojiMore(det);
+      }
+      updateFmtEmojiGridOverflowClasses(grid);
+      bindFmtEmojiGridResizeObserver(grid);
+    });
+  });
+}
+
 function insertEmoji(textareaId, ch) {
   const ta = document.getElementById(textareaId);
   if (!ta || ch == null) return;
@@ -2490,15 +3288,9 @@ function instructorFormatToolbarHtml(textareaId) {
     <button type="button" class="fmt-btn fmt-emoji" data-emoji="👍" title="Thumbs up">👍</button>
     <button type="button" class="fmt-btn fmt-emoji" data-emoji="✅" title="Check">✅</button>
     <button type="button" class="fmt-btn fmt-emoji" data-emoji="💡" title="Idea">💡</button>
-    <details class="fmt-emoji-more" onclick="event.stopPropagation()">
-      <summary class="fmt-more-summary" title="More emojis">⋯</summary>
-      <div class="fmt-emoji-grid">
-        <button type="button" class="fmt-btn fmt-emoji" data-emoji="🎉">🎉</button>
-        <button type="button" class="fmt-btn fmt-emoji" data-emoji="👏">👏</button>
-        <button type="button" class="fmt-btn fmt-emoji" data-emoji="❓">❓</button>
-        <button type="button" class="fmt-btn fmt-emoji" data-emoji="❤️">❤️</button>
-        <button type="button" class="fmt-btn fmt-emoji" data-emoji="🚀">🚀</button>
-      </div>
+    <details class="fmt-emoji-more">
+      <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+      <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="${escFmtAttr(textareaId)}" role="group" aria-label="More emojis"></div>
     </details>
   </div>`;
 }
@@ -2513,14 +3305,23 @@ function formatRichMessage(raw) {
   var chunks = [];
   var PH = '\uFFF0';
   var PH2 = '\uFFF1';
+  var copySvg = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   s = s.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, function (m, lang, code) {
     var i = chunks.length;
-    chunks.push('<pre class="rich-pre"><code>' + esc(code) + '</code></pre>');
+    chunks.push(
+      '<div class="rich-pre-wrap">' +
+      '<div class="rich-pre-toolbar"><button type="button" class="rich-copy-btn" aria-label="Copy code" title="Copy code">' + copySvg + '</button></div>' +
+      '<pre class="rich-pre"><code>' + esc(code) + '</code></pre></div>'
+    );
     return PH + 'R' + i + PH2;
   });
   s = s.replace(/`([^`\n]+)`/g, function (m, code) {
     var i = chunks.length;
-    chunks.push('<code class="rich-code">' + esc(code) + '</code>');
+    chunks.push(
+      '<span class="rich-code-line-wrap" role="group">' +
+      '<code class="rich-code">' + esc(code) + '</code>' +
+      '<button type="button" class="rich-copy-btn rich-copy-btn--inline" aria-label="Copy code" title="Copy code">' + copySvg + '</button></span>'
+    );
     return PH + 'R' + i + PH2;
   });
   s = esc(s);
@@ -2535,7 +3336,49 @@ function formatRichMessage(raw) {
 }
 function isHttpsUrl(u) { return !!u && /^https:\/\//i.test(String(u).trim()); }
 
+function copyRichCodeBlockInstr(btn) {
+  const wrap = btn && btn.closest && (btn.closest('.rich-pre-wrap') || btn.closest('.rich-code-line-wrap'));
+  const codeEl = wrap && (wrap.querySelector('.rich-pre code') || wrap.querySelector('code.rich-code'));
+  if (!codeEl) return;
+  const txt = codeEl.textContent || '';
+  function done() {
+    showToast('Copied to clipboard');
+    btn.classList.add('rich-copy-btn--done');
+    setTimeout(() => { btn.classList.remove('rich-copy-btn--done'); }, 1600);
+  }
+  function fail() { showToast('Could not copy'); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done).catch(() => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done();
+      } catch (e) { fail(); }
+    });
+  } else {
+    try {
+      const ta2 = document.createElement('textarea');
+      ta2.value = txt;
+      ta2.setAttribute('readonly', '');
+      ta2.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta2);
+      ta2.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta2);
+      done();
+    } catch (e2) { fail(); }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  initFmtEmojiPickerLayout();
+  fillFmtEmojiPickerGrids();
   document.getElementById('signin-pin').addEventListener('keydown', e => { if (e.key==='Enter') instructorLogin(); });
   document.getElementById('reg-pin2').addEventListener('keydown', e => { if (e.key==='Enter') instructorRegister(); });
   let instrSearchTimer = null;
@@ -2566,6 +3409,40 @@ document.addEventListener('DOMContentLoaded', () => {
       if (det) det.open = false;
     });
   }
+  document.body.addEventListener('click', (e) => {
+    const pick = e.target.closest && e.target.closest('.fmt-emoji-picker-cell[data-emoji-target]');
+    if (pick) {
+      e.preventDefault();
+      const tid = pick.getAttribute('data-emoji-target');
+      const ch = pick.getAttribute('data-ch');
+      if (tid && ch != null) insertEmoji(tid, ch);
+      const shellPick = pick.closest('.fmt-emoji-grid-shell');
+      const detPick = (shellPick && shellPick._fmtEmojiDetails) || pick.closest('details');
+      if (detPick) detPick.open = false;
+      return;
+    }
+    const btn = e.target.closest && e.target.closest('.rich-copy-btn');
+    if (!btn) return;
+    e.preventDefault();
+    copyRichCodeBlockInstr(btn);
+  });
+  function closeFmtEmojiPickersIfOutside(e) {
+    const t = e.target;
+    if (!t || typeof t.closest !== 'function') return;
+    document.querySelectorAll('details.fmt-emoji-more[open]').forEach((d) => {
+      if (d.contains(t)) return;
+      const shell = d._fmtEmojiShell;
+      if (shell && shell.contains(t)) return;
+      d.open = false;
+    });
+  }
+  /* Capture so this runs before other handlers; pointerdown + touchstart for outside dismiss. */
+  document.addEventListener('pointerdown', closeFmtEmojiPickersIfOutside, true);
+  document.addEventListener('touchstart', closeFmtEmojiPickersIfOutside, { capture: true, passive: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('details.fmt-emoji-more[open]').forEach((d) => { d.open = false; });
+  });
 });
 </script>
 </body>

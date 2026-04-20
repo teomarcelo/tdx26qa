@@ -10,7 +10,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Sessions (instructor creates/updates class info + bulletin) and questions
+    // Sessions (instructor creates/updates class info) and questions
     match /sessions/{sessionId} {
       allow read: if true;
       allow create, update: if true;
