@@ -1,3 +1,4 @@
+import firebase from '../lib/firebaseCompat.js';
 import { FIREBASE_CONFIG } from '../config/firebase.js';
 import { QUESTIONS_PAGE_SIZE } from '../constants/app.js';
 import { INSTRUCTOR_PIN_PEPPER } from '../constants/auth.js';
@@ -5,6 +6,7 @@ import { esc, formatRichMessage, isHttpsUrl, copyRichCodeBlock } from '../lib/ri
 import { createShowToast } from '../lib/toast.js';
 import { formatQuestionWhen } from '../lib/formatQuestionWhen.js';
 import { filterCorpusByFuseSearch } from '../lib/questionSearch.js';
+import { fetchSessionQuestionCountStats } from '../lib/sessionQuestionCounts.js';
 
 const showToast = createShowToast('toast');
 function copyRichCodeBlockInstr(btn) {
@@ -138,6 +140,11 @@ let instructorSessionsHydrated = false;
 let questionPages = [];
 let currentQuestionPage = 0;
 let hasMoreOlder = false, questionsLoading = false;
+/** True when there are no further question docs in Firestore beyond cached pages (short last page or empty older fetch). */
+let instructorOlderBeyondLoadExhausted = false;
+/** Cancels stale Firestore aggregate stat requests when switching sessions. */
+let instructorSessionStatsSerial = 0;
+let instructorStatsAggTimer = null;
 const answerDrafts = {};
 const pendingAnswerImages = {};
 
@@ -255,10 +262,9 @@ window.addEventListener('load', () => {
   const configReady = FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
   if (configReady) {
     try {
-      firebase.initializeApp(FIREBASE_CONFIG);
       db = firebase.firestore();
       if (firebase.storage) storage = firebase.storage();
-    } catch(e) { console.warn('Firebase init failed:', e); }
+    } catch (e) { console.warn('Firebase init failed:', e); }
   }
   document.addEventListener('paste', onAnswerBoxPaste, true);
   const savedName = readInstructorNameFromStorage();
@@ -326,6 +332,9 @@ async function instructorRegister() {
 }
 
 function instructorLogout() {
+  instructorSessionStatsSerial++;
+  clearTimeout(instructorStatsAggTimer);
+  instructorStatsAggTimer = null;
   try {
     sessionStorage.setItem(INSTR_ONBOARDING_WELCOME_KEY, '1');
     sessionStorage.removeItem(INSTR_ONBOARDING_LEGACY);
@@ -341,6 +350,7 @@ function instructorLogout() {
   questionPages = [];
   currentQuestionPage = 0;
   hasMoreOlder = false;
+  instructorOlderBeyondLoadExhausted = false;
   if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
   if (unsubSession) { unsubSession(); unsubSession = null; }
   // reset UI
@@ -357,6 +367,8 @@ function instructorLogout() {
   ['stat-total','stat-answered','stat-pending','stat-pinned','fc-all','fc-pinned','fc-pending','fc-answered'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '0';
   });
+  const scopeHint = document.getElementById('instr-stat-scope-hint');
+  if (scopeHint) scopeHint.textContent = '';
   document.documentElement.classList.remove('instr-restoring-session');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
@@ -379,6 +391,9 @@ function showDashboard() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'flex';
   document.documentElement.classList.remove('instr-restoring-session');
+  instructorSessionStatsSerial++;
+  clearTimeout(instructorStatsAggTimer);
+  instructorStatsAggTimer = null;
   // reset session state for fresh login
   activeSessionCode = null;
   allSessions = [];
@@ -386,6 +401,7 @@ function showDashboard() {
   questionPages = [];
   currentQuestionPage = 0;
   hasMoreOlder = false;
+  instructorOlderBeyondLoadExhausted = false;
   Object.keys(answerDrafts).forEach(k => { delete answerDrafts[k]; });
   Object.keys(pendingAnswerImages).forEach(k => { delete pendingAnswerImages[k]; });
   const dashSearch = document.getElementById('instr-questions-search');
@@ -430,6 +446,7 @@ function loadDemoSessions() {
   questionPages = [{ questions: qs, endSnap: null }];
   currentQuestionPage = 0;
   hasMoreOlder = false;
+  instructorOlderBeyondLoadExhausted = true;
   rebuildAllQuestions();
   if (allSessions.length) {
     activeSessionCode = DEMO_SESSION_CODE;
@@ -447,6 +464,7 @@ function loadDemoSessions() {
     questionPages = [];
     currentQuestionPage = 0;
     hasMoreOlder = false;
+    instructorOlderBeyondLoadExhausted = false;
     rebuildAllQuestions();
     syncActiveCodeBadge();
     document.getElementById('session-dependent-sections').style.display = 'none';
@@ -455,6 +473,8 @@ function loadDemoSessions() {
       const hel = document.getElementById(id);
       if (hel) hel.textContent = '0';
     });
+    const hintClear = document.getElementById('instr-stat-scope-hint');
+    if (hintClear) hintClear.textContent = '';
     updateInstructorPaginationUi();
     renderSessionsList();
     persistInstructorActiveSession(null);
@@ -538,10 +558,10 @@ function buildInstructorPaginationHtml() {
   const cur = questionPages[currentQuestionPage];
   const canPrev = currentQuestionPage > 0;
   const canNextCached = currentQuestionPage < numLoaded - 1;
-  const canNextFetch = !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
+  const canNextFetch = !instructorOlderBeyondLoadExhausted && !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
   const canNext = canNextCached || canNextFetch;
   const lastPg = questionPages[numLoaded - 1];
-  const showPhantomNext = !!(lastPg && lastPg.endSnap && lastPg.questions.length >= QUESTIONS_PAGE_SIZE);
+  const showPhantomNext = !instructorOlderBeyondLoadExhausted && !!(lastPg && lastPg.endSnap && lastPg.questions.length >= QUESTIONS_PAGE_SIZE);
   const totalSlots = numLoaded + (showPhantomNext ? 1 : 0);
   const maxNums = 5;
   let lo = 0;
@@ -637,10 +657,17 @@ function goInstructorOlderPage() {
     .limit(QUESTIONS_PAGE_SIZE)
     .get()
     .then(snap => {
+      if (!snap.docs.length) {
+        instructorOlderBeyondLoadExhausted = true;
+        updateStats();
+        updateInstructorPaginationUi();
+        return;
+      }
       const questions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const endSnap = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
       questionPages[nextIdx] = { questions, endSnap };
       currentQuestionPage = nextIdx;
+      instructorOlderBeyondLoadExhausted = snap.docs.length < QUESTIONS_PAGE_SIZE;
       rebuildAllQuestions();
       captureAnswerDrafts();
       renderQuestions();
@@ -886,6 +913,9 @@ function hideSessionFromList(sessionCode, ev) {
   if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   if (!sessionCode) return;
   const clearActivePanel = () => {
+    instructorSessionStatsSerial++;
+    clearTimeout(instructorStatsAggTimer);
+    instructorStatsAggTimer = null;
     if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
     activeSessionCode = null;
     const iqSearch = document.getElementById('instr-questions-search');
@@ -893,12 +923,15 @@ function hideSessionFromList(sessionCode, ev) {
     questionPages = [];
     currentQuestionPage = 0;
     hasMoreOlder = false;
+    instructorOlderBeyondLoadExhausted = false;
     rebuildAllQuestions();
     renderQuestions();
     ['stat-total', 'stat-answered', 'stat-pending', 'stat-pinned', 'fc-all', 'fc-pinned', 'fc-pending', 'fc-answered'].forEach(id => {
       const hel = document.getElementById(id);
       if (hel) hel.textContent = '0';
     });
+    const hintEl = document.getElementById('instr-stat-scope-hint');
+    if (hintEl) hintEl.textContent = '';
     updateInstructorPaginationUi();
     syncActiveCodeBadge();
     document.getElementById('session-dependent-sections').style.display = 'none';
@@ -931,6 +964,9 @@ function hideSessionFromList(sessionCode, ev) {
 
 function selectSession(code) {
   activeSessionCode = code;
+  instructorSessionStatsSerial++;
+  clearTimeout(instructorStatsAggTimer);
+  instructorStatsAggTimer = null;
   clearInstructorOnboardingWelcomeFlag();
   if (!isDemoMode) persistInstructorActiveSession(code);
   renderSessionsList();
@@ -943,11 +979,18 @@ function selectSession(code) {
   questionPages = [];
   currentQuestionPage = 0;
   hasMoreOlder = false;
+  instructorOlderBeyondLoadExhausted = false;
   Object.keys(pendingAnswerImages).forEach(k => { delete pendingAnswerImages[k]; });
   const iqSearch = document.getElementById('instr-questions-search');
   if (iqSearch) iqSearch.value = '';
 
   if (isDemoMode) {
+    const qsDemo = DEMO_QUESTIONS_TEMPLATE.map(q => ({ ...q, voters: [...q.voters] }));
+    questionPages = [{ questions: qsDemo, endSnap: null }];
+    currentQuestionPage = 0;
+    hasMoreOlder = false;
+    instructorOlderBeyondLoadExhausted = true;
+    rebuildAllQuestions();
     renderQuestions();
     updateStats();
     updateInstructorPaginationUi();
@@ -964,6 +1007,7 @@ function selectSession(code) {
       hasMoreOlder = snap.docs.length >= QUESTIONS_PAGE_SIZE;
       if (currentQuestionPage === 0) {
         if (questionPages.length > 1) questionPages.length = 1;
+        instructorOlderBeyondLoadExhausted = questions.length < QUESTIONS_PAGE_SIZE;
         rebuildAllQuestions();
         captureAnswerDrafts();
         renderQuestions();
@@ -973,6 +1017,7 @@ function selectSession(code) {
       }
     });
   updateInstructorPaginationUi();
+  runInstructorAggregateStatsRefresh();
 }
 
 function openJoinSessionModal() {
@@ -1404,19 +1449,78 @@ function confirmDelete() {
     });
 }
 
+function applyInstructorStatAndFcFromCache(qs) {
+  document.getElementById('stat-total').textContent = qs.length;
+  document.getElementById('stat-answered').textContent = qs.filter(q => q.status === 'answered').length;
+  document.getElementById('stat-pending').textContent = qs.filter(q => q.status !== 'answered').length;
+  document.getElementById('stat-pinned').textContent = qs.filter(q => q.pinned).length;
+  document.getElementById('fc-all').textContent = qs.length;
+  document.getElementById('fc-pinned').textContent = qs.filter(q => q.pinned).length;
+  document.getElementById('fc-pending').textContent = qs.filter(q => q.status !== 'answered').length;
+  document.getElementById('fc-answered').textContent = qs.filter(q => q.status === 'answered').length;
+}
+
+function setInstructorStatHintAggregatesOk() {
+  const el = document.getElementById('instr-stat-scope-hint');
+  if (el) el.textContent = 'Session-wide totals for this whole class (from Firestore). The list below still loads in pages (newest first).';
+}
+
+function setInstructorStatHintFallback() {
+  const el = document.getElementById('instr-stat-scope-hint');
+  if (el) el.textContent = 'Could not load session-wide totals. Showing counts from posts loaded in this browser only.';
+}
+
+function runInstructorAggregateStatsRefresh() {
+  const code = activeSessionCode;
+  if (!code || !db || isDemoMode) return;
+  const serialAtStart = instructorSessionStatsSerial;
+  fetchSessionQuestionCountStats(code)
+    .then((stats) => {
+      if (serialAtStart !== instructorSessionStatsSerial || code !== activeSessionCode) return;
+      document.getElementById('stat-total').textContent = String(stats.total);
+      document.getElementById('stat-answered').textContent = String(stats.answered);
+      document.getElementById('stat-pending').textContent = String(stats.pending);
+      document.getElementById('stat-pinned').textContent = String(stats.pinned);
+      document.getElementById('fc-all').textContent = String(stats.total);
+      document.getElementById('fc-pinned').textContent = String(stats.pinned);
+      document.getElementById('fc-pending').textContent = String(stats.pending);
+      document.getElementById('fc-answered').textContent = String(stats.answered);
+      setInstructorStatHintAggregatesOk();
+    })
+    .catch(() => {
+      if (serialAtStart !== instructorSessionStatsSerial || code !== activeSessionCode) return;
+      const qs = getAllCachedInstructorQuestionsForStats();
+      applyInstructorStatAndFcFromCache(qs);
+      setInstructorStatHintFallback();
+    });
+}
+
+function scheduleInstructorAggregateStatsRefresh() {
+  if (isDemoMode || !activeSessionCode || !db) return;
+  clearTimeout(instructorStatsAggTimer);
+  instructorStatsAggTimer = setTimeout(() => {
+    instructorStatsAggTimer = null;
+    runInstructorAggregateStatsRefresh();
+  }, 400);
+}
+
 function updateStats() {
   const qs = getAllCachedInstructorQuestionsForStats();
-  document.getElementById('stat-total').textContent = qs.length;
-  document.getElementById('stat-answered').textContent = qs.filter(q=>q.status==='answered').length;
-  document.getElementById('stat-pending').textContent = qs.filter(q=>q.status!=='answered').length;
-  document.getElementById('stat-pinned').textContent = qs.filter(q=>q.pinned).length;
-  document.getElementById('fc-all').textContent = qs.length;
-  document.getElementById('fc-pinned').textContent = qs.filter(q=>q.pinned).length;
-  document.getElementById('fc-pending').textContent = qs.filter(q=>q.status!=='answered').length;
-  document.getElementById('fc-answered').textContent = qs.filter(q=>q.status==='answered').length;
   updateInstructorPaginationUi();
-  // keep student demo view in sync
   if (studentViewOpen) sdemoRender();
+  if (isDemoMode) {
+    applyInstructorStatAndFcFromCache(qs);
+    const el = document.getElementById('instr-stat-scope-hint');
+    if (el) el.textContent = qs.length ? 'Demo — counts are for the built-in sample questions.' : '';
+    return;
+  }
+  if (!activeSessionCode || !db) {
+    applyInstructorStatAndFcFromCache(qs);
+    const h = document.getElementById('instr-stat-scope-hint');
+    if (h) h.textContent = '';
+    return;
+  }
+  scheduleInstructorAggregateStatsRefresh();
 }
 
 // ── STUDENT DEMO VIEW ──────────────────────────
@@ -1602,6 +1706,7 @@ function resetDemo() {
   questionPages = [{ questions: qs, endSnap: null }];
   currentQuestionPage = 0;
   hasMoreOlder = false;
+  instructorOlderBeyondLoadExhausted = true;
   const rs = document.getElementById('instr-questions-search');
   if (rs) rs.value = '';
   rebuildAllQuestions();

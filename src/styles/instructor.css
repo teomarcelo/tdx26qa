@@ -187,6 +187,12 @@
   .side-section-body { padding: 0 1.25rem 1.1rem; }
   .side-section.collapsed .side-section-body { display: none; }
 
+  .stat-scope-hint {
+    font-size: 0.76rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+    margin: 0 0 0.65rem;
+  }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .stat-tile { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; }
   .stat-num { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.03em; }

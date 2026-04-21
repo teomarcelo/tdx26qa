@@ -1,7 +1,7 @@
 # Session Q&A App — Setup Guide
 
 ## What you got
-- `student.html` / `instructor.html` — Page shells (Firebase + Fuse from CDN; app code from `src/` via Vite)
+- `student.html` / `instructor.html` — Page shells (**Fuse** from CDN; **Firebase** is bundled from `src/lib/firebaseCompat.js` with Vite; app logic in `src/`)
 - `src/` — Bundled app logic, styles, and default Firebase config (`src/config/firebase.js`)
 
 **Rich text (no extra Firebase setup):** Session sidebar (“Important”) note, questions, and answers support **Slack-style** markers in plain text (`*bold*`, `` `code` ``, fenced blocks, `https://` links). The app renders them in the browser; stored values are still normal strings on the session or question documents. **Copy** controls on rendered code and the **⋯** emoji grid are UI-only (no extra fields).

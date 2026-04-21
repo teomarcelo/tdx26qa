@@ -6,9 +6,6 @@
 <title>Session Q&A — Student</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-app-compat.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-firestore-compat.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-storage-compat.js" defer></script>
 <script>
 (function () {
   try {
@@ -130,7 +127,8 @@
         </div>
       </div>
       <div class="side-section">
-        <div class="side-title">Stats</div>
+        <div class="side-title">Session stats</div>
+        <p class="stat-scope-hint" id="stat-scope-hint" role="note"></p>
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-num" id="stat-total">0</div>

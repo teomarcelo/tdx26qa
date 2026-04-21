@@ -11,7 +11,7 @@ Live Q&A for trainings and events. Instructors run a session with a short code; 
 | `index.html` | Dev/prod **hub** at `/` with links to student and instructor (the real apps are the two HTML entries below). |
 | `student.html` / `instructor.html` | Page shells (markup + Firebase CDN + Fuse). **Run via Vite** in dev; for production, use the **`dist/`** output of `npm run build` (see below). |
 | `src/` | App logic split into **`config/`**, **`constants/`**, **`lib/`**, and **`student/`** / **`instructor/`** entry bundles. |
-| `vite.config.js`, `package.json` | [Vite](https://vitejs.dev/) multi-page build (`index` + `student` + `instructor`). |
+| `vite.config.js`, `package.json` | [Vite](https://vitejs.dev/) multi-page build (`index` + `student` + `instructor`). **`firebase`** (npm): **`firebase/compat/app`** (+ Firestore + Storage) in **`src/lib/firebaseCompat.js`** for all reads/writes, and the same package’s modular **`getCountFromServer`** for **session-wide stat** counts (no separate CDN Firebase scripts). |
 | `SETUP.md` | Firebase project, Firestore rules, hosting, and session flow. |
 | `CHANGELOG.md` | **Timeline of recent product and doc changes** (newest first). |
 

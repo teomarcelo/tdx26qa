@@ -1,3 +1,4 @@
+import firebase from '../lib/firebaseCompat.js';
 import { FIREBASE_CONFIG } from '../config/firebase.js';
 import {
   QUESTIONS_PAGE_SIZE,
@@ -9,6 +10,7 @@ import { esc, linkify, formatRichMessage, isHttpsUrl, copyRichCodeBlock as runCo
 import { createShowToast } from '../lib/toast.js';
 import { formatQuestionWhen } from '../lib/formatQuestionWhen.js';
 import { filterCorpusByFuseSearch } from '../lib/questionSearch.js';
+import { fetchSessionQuestionCountStats } from '../lib/sessionQuestionCounts.js';
 
 const showToast = createShowToast('toast');
 
@@ -20,6 +22,10 @@ let studentPollSkipUntil = 0;
 let questionPages = [];
 let currentQuestionPage = 0;
 let hasMoreOlder = false, questionsLoading = false;
+/** True once we know there are no older questions in Firestore beyond what is cached (short last page or empty older fetch). */
+let studentOlderBeyondLoadExhausted = false;
+/** Invalidates in-flight Firestore aggregate stat requests when the session changes. */
+let studentSessionStatsSerial = 0;
 let storage = null;
 const pendingQuestionImages = [];
 
@@ -134,10 +140,9 @@ window.addEventListener('load', () => {
   const configReady = FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
   if (configReady) {
     try {
-      firebase.initializeApp(FIREBASE_CONFIG);
       db = firebase.firestore();
       if (firebase.storage) storage = firebase.storage();
-    } catch(e) { console.warn('Firebase init failed:', e); }
+    } catch (e) { console.warn('Firebase init failed:', e); }
   }
   var legacyUid = null;
   try { legacyUid = sessionStorage.getItem(SS_LEGACY_UID); } catch (e) {}
@@ -184,6 +189,7 @@ function showJoinError(msg) { document.getElementById('join-error').textContent 
 
 function enterApp() {
   clearStudentRestoringShell();
+  studentSessionStatsSerial++;
   if (sessionCode) {
     safeLsSet(LS_LAST_SESSION, sessionCode);
     safeLsRemove(LS_LAST_SESSION_LEGACY);
@@ -200,6 +206,7 @@ function enterApp() {
   questionPages = [];
   currentQuestionPage = 0;
   hasMoreOlder = false;
+  studentOlderBeyondLoadExhausted = false;
   allQuestions = [];
   var qsIn = document.getElementById('questions-search');
   if (qsIn) qsIn.value = '';
@@ -253,6 +260,7 @@ function leaveSession() {
   safeLsRemove(LS_LAST_SESSION_LEGACY);
   sessionCode = null;
   currentSession = null;
+  studentSessionStatsSerial++;
   clearStudentRestoringShell();
   document.getElementById('join-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
@@ -371,6 +379,7 @@ function fetchStudentQuestionsFirstPage() {
       questionPages[0] = { questions: questions, endSnap: endSnap };
       if (questionPages.length > 1) questionPages.length = 1;
       hasMoreOlder = snap.docs.length >= QUESTIONS_PAGE_SIZE;
+      studentOlderBeyondLoadExhausted = snap.docs.length < QUESTIONS_PAGE_SIZE;
       rebuildAllQuestions();
       renderQuestions();
       updateStats();
@@ -387,6 +396,7 @@ function studentRefreshNow() {
   }
   currentQuestionPage = 0;
   questionPages = [];
+  studentOlderBeyondLoadExhausted = false;
   var btn = document.getElementById('refresh-now-btn');
   if (btn) btn.disabled = true;
   fetchStudentQuestionsFirstPage()
@@ -415,10 +425,17 @@ function goStudentOlderPage() {
     .limit(QUESTIONS_PAGE_SIZE)
     .get()
     .then(function (snap) {
+      if (!snap.docs.length) {
+        studentOlderBeyondLoadExhausted = true;
+        updateStats();
+        updateQuestionPaginationUi();
+        return;
+      }
       var questions = snap.docs.map(function (d) { return { id: d.id, ...d.data() }; });
       var endSnap = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
       questionPages[nextIdx] = { questions: questions, endSnap: endSnap };
       currentQuestionPage = nextIdx;
+      studentOlderBeyondLoadExhausted = snap.docs.length < QUESTIONS_PAGE_SIZE;
       rebuildAllQuestions();
       renderQuestions();
       updateStats();
@@ -459,10 +476,10 @@ function buildStudentPaginationHtml() {
   var cur = questionPages[currentQuestionPage];
   var canPrev = currentQuestionPage > 0;
   var canNextCached = currentQuestionPage < numLoaded - 1;
-  var canNextFetch = !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
+  var canNextFetch = !studentOlderBeyondLoadExhausted && !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
   var canNext = canNextCached || canNextFetch;
   var lastPg = questionPages[numLoaded - 1];
-  var showPhantomNext = !!(lastPg && lastPg.endSnap && lastPg.questions.length >= QUESTIONS_PAGE_SIZE);
+  var showPhantomNext = !studentOlderBeyondLoadExhausted && !!(lastPg && lastPg.endSnap && lastPg.questions.length >= QUESTIONS_PAGE_SIZE);
   var totalSlots = numLoaded + (showPhantomNext ? 1 : 0);
   var maxNums = 5;
   var lo = 0;
@@ -984,13 +1001,47 @@ function renderQuestions() {
   }).join('');
 }
 
+function setStudentStatHintAggregatesOk() {
+  var el = document.getElementById('stat-scope-hint');
+  if (el) el.textContent = 'Session-wide totals for this whole class (from Firestore). The list below still loads in pages (newest first).';
+}
+
+function setStudentStatHintFallback() {
+  var el = document.getElementById('stat-scope-hint');
+  if (el) el.textContent = 'Could not load session-wide totals. Showing counts from posts loaded in this browser only.';
+}
+
+function applyStudentStatCardsFromCache(qs) {
+  document.getElementById('stat-total').textContent = qs.length;
+  document.getElementById('stat-answered').textContent = qs.filter(function (q) { return q.status === 'answered'; }).length;
+  document.getElementById('stat-pending').textContent = qs.filter(function (q) { return q.status === 'pending'; }).length;
+  document.getElementById('stat-pinned').textContent = qs.filter(function (q) { return q.pinned; }).length;
+}
+
 function updateStats() {
   const qs = getAllCachedQuestionsForStats();
-  document.getElementById('stat-total').textContent = qs.length;
   updateQuestionPaginationUi();
-  document.getElementById('stat-answered').textContent = qs.filter(q=>q.status==='answered').length;
-  document.getElementById('stat-pending').textContent = qs.filter(q=>q.status==='pending').length;
-  document.getElementById('stat-pinned').textContent = qs.filter(q=>q.pinned).length;
+  if (!db || !sessionCode) {
+    applyStudentStatCardsFromCache(qs);
+    var h = document.getElementById('stat-scope-hint');
+    if (h) h.textContent = qs.length ? 'Connect to Firebase to load session-wide totals.' : '';
+    return;
+  }
+  const serialAtStart = studentSessionStatsSerial;
+  fetchSessionQuestionCountStats(sessionCode)
+    .then(function (stats) {
+      if (serialAtStart !== studentSessionStatsSerial) return;
+      document.getElementById('stat-total').textContent = String(stats.total);
+      document.getElementById('stat-answered').textContent = String(stats.answered);
+      document.getElementById('stat-pending').textContent = String(stats.pending);
+      document.getElementById('stat-pinned').textContent = String(stats.pinned);
+      setStudentStatHintAggregatesOk();
+    })
+    .catch(function () {
+      if (serialAtStart !== studentSessionStatsSerial) return;
+      applyStudentStatCardsFromCache(qs);
+      setStudentStatHintFallback();
+    });
 }
 
 function insertSlackFormat(textareaId, mode) {

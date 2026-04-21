@@ -846,6 +846,12 @@
   .side-section { margin-bottom: 1.35rem; }
   .side-section:last-child { margin-bottom: 0; }
   .side-title { font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.75rem; }
+  .stat-scope-hint {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin: -0.25rem 0 0.75rem;
+  }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .stat-card { background: white; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem; text-align: center; }
   .stat-num { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.03em; }

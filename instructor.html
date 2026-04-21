@@ -6,9 +6,6 @@
 <title>Session Q&A — Instructor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-app-compat.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-firestore-compat.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase/firebase-storage-compat.js" defer></script>
 <script>
 (function () {
   try {
@@ -151,6 +148,7 @@
             <span class="side-chevron">▾</span>
           </div>
           <div class="side-section-body">
+            <p class="stat-scope-hint" id="instr-stat-scope-hint" role="note"></p>
             <div class="stats-grid">
               <div class="stat-tile"><div class="stat-num" id="stat-total">0</div><div class="stat-lbl">Total</div></div>
               <div class="stat-tile"><div class="stat-num" id="stat-answered" style="color:var(--success)">0</div><div class="stat-lbl">Answered</div></div>
