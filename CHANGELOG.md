@@ -14,6 +14,7 @@ All notable changes to this project are documented here. Newest first.
 
 ### Student
 
+- **Instructor notes byline:** each note card shows the **instructor display name** who saved that card (same string model as answer attribution: `instructor` on each `sessionNotes` item).
 - **Instructor notes:** single **Instructor notes** pill on the filter row (after **Most votes**); toggles the main feed between Q&A and notes only (no **custom-named** link list — plain https links still show as hostname/path so the control stays available for link-only cards).
 - **Instructor notes visibility:** toggle stays in sync with Firestore even when the notes list node is missing on first paint; **https links** count as visible note content again.
 - **Toolbar:** solid-blue “active” styling applies only to **All / Pinned / Unanswered / Answered** (`data-filter`); **Most votes** stays outlined when on, so it never reads as a second filled chip next to a status filter.
@@ -24,6 +25,7 @@ All notable changes to this project are documented here. Newest first.
 
 ### Instructor
 
+- **Session notes attribution:** new cards record **`instructor`** (signed-in instructor name); edits preserve the existing author unless the note predates the field (then the next save assigns the current editor). Editor header shows **Added by …**; students see the same name on each card.
 - **Instructor Notes** sidebar label (replaces “Important”); **Show in student dashboard** checkbox copy.
 - **Edit** saved answer text/images on a thread.
 

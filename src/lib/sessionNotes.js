@@ -53,6 +53,7 @@ export function getSessionNotesFromDoc(s) {
           imageUrls: Array.isArray(n.imageUrls) ? n.imageUrls.map(u => String(u).trim()).filter(Boolean) : [],
           links: normalizeNoteLinks(n.links),
           show: n.show !== false,
+          instructor: String(n.instructor || n.instructorName || n.authorName || '').trim(),
         }))
         .sort((a, b) => a.order - b.order);
     }

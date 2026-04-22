@@ -554,6 +554,10 @@ function renderSessionNote(s) {
     return;
   }
   listEl.innerHTML = notes.map(function (n) {
+    var who = String(n.instructor || '').trim();
+    var whoHtml = who
+      ? '<div class="session-note-byline">' + esc(who) + '</div>'
+      : '';
     var t = String(n.title || '').trim();
     var b = String(n.body || '').trim();
     var urlsAll = Array.isArray(n.imageUrls)
@@ -623,7 +627,7 @@ function renderSessionNote(s) {
           .join('') +
         '</ul>';
     }
-    return '<div class="session-note-card">' + titleHtml + bodyHtml + imgBlock + linksHtml + '</div>';
+    return '<div class="session-note-card">' + whoHtml + titleHtml + bodyHtml + imgBlock + linksHtml + '</div>';
   }).join('');
   applyStudentFeedViewDom();
 }

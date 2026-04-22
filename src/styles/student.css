@@ -380,6 +380,13 @@
     background: var(--surface);
     border-left: 3px solid var(--accent);
   }
+  .session-note-byline {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+    letter-spacing: 0.03em;
+  }
   .session-note-title {
     font-size: 0.92rem;
     font-weight: 600;

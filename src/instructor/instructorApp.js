@@ -185,8 +185,8 @@ const DEMO_SESSION = {
   studentSurveyCopyText: 'EXAMPLE-COPY-CODE',
   sessionNoteShow: true,
   sessionNotes: [
-    { id: 'demo-sn1', order: 0, title: 'Quick links', body: 'Example: https://trailhead.salesforce.com — appears under Session for students.', imageUrls: [], links: [{ url: 'https://trailhead.salesforce.com', label: 'Trailhead' }], show: true },
-    { id: 'demo-sn2', order: 1, title: 'Wi‑Fi', body: 'Network: `Conference-Guest`', imageUrls: [], links: [], show: true },
+    { id: 'demo-sn1', order: 0, title: 'Quick links', body: 'Example: https://trailhead.salesforce.com — appears under Session for students.', imageUrls: [], links: [{ url: 'https://trailhead.salesforce.com', label: 'Trailhead' }], show: true, instructor: 'Alex (demo)' },
+    { id: 'demo-sn2', order: 1, title: 'Wi‑Fi', body: 'Network: `Conference-Guest`', imageUrls: [], links: [], show: true, instructor: 'Jordan (demo)' },
   ],
 };
 const DEMO_QUESTIONS_TEMPLATE = [
@@ -598,6 +598,8 @@ function buildSessionNoteEditorCardHtml(note, idx) {
   const collapsedClass = collapsed ? ' sn-card-collapsed' : '';
   const previewRaw = String(note.title || '').trim();
   const preview = previewRaw || 'Untitled note';
+  const by = String(note.instructor || '').trim();
+  const byLine = by ? `<span class="sn-card-author">Added by ${esc(by)}</span>` : '';
   const ariaExp = collapsed ? 'false' : 'true';
   return `<div class="session-note-edit-card${collapsedClass}" data-note-id="${escFmtAttr(note.id)}" draggable="false">
     <div class="session-note-edit-card-head">
@@ -605,7 +607,10 @@ function buildSessionNoteEditorCardHtml(note, idx) {
       <button type="button" class="sn-card-toggle" data-sn-collapse="${escFmtAttr(note.id)}" title="Expand or collapse this note" aria-expanded="${ariaExp}" aria-label="Expand or collapse note editor">
         <svg class="sn-card-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
-      <span class="sn-card-preview">${esc(preview)}</span>
+      <div class="sn-card-head-text">
+        <span class="sn-card-preview">${esc(preview)}</span>
+        ${byLine}
+      </div>
       <label class="sn-show-label"><input type="checkbox" class="sn-show"${showChecked}> Show</label>
       <button type="button" class="sn-remove-btn" data-sn-remove="${escFmtAttr(note.id)}">Remove</button>
     </div>
@@ -656,7 +661,9 @@ function collectSessionNotesFromDom() {
       .filter(l => /^https?:\/\//i.test(l.url))
       .slice(0, SESSION_NOTE_LINKS_MAX);
     const editorCollapsed = card.classList.contains('sn-card-collapsed');
-    return { id, order: idx, title: title.trim(), body: body.trim(), imageUrls, links, show, editorCollapsed };
+    const fromDraft = draftRow && String(draftRow.instructor || '').trim();
+    const instructor = fromDraft || (currentInstructor || 'Instructor');
+    return { id, order: idx, title: title.trim(), body: body.trim(), imageUrls, links, show, editorCollapsed, instructor };
   });
 }
 
@@ -687,6 +694,7 @@ function addSessionNoteCard() {
     imageUrls: [],
     links: [],
     show: true,
+    instructor: currentInstructor || 'Instructor',
     editorCollapsed: false,
   });
   renderSessionNotesEditor();
