@@ -22,18 +22,51 @@ export const SESSION_TIMEZONE_OPTIONS = [
   { value: 'Australia/Sydney', label: 'Australia — Sydney' },
 ];
 
-/** Short zone name for student card (e.g. PDT, EST) — depends on current calendar day for DST. */
+/**
+ * Known IANA zones → stable short label for the student session card (no PST/PDT flip-flop).
+ * Prefer generic US labels (PT, MT, CT, ET) so scheduling reads like wall-clock intent, not DST legalese.
+ */
+const STABLE_TZ_ABBREV = {
+  'America/Los_Angeles': 'PT',
+  'America/Denver': 'MT',
+  'America/Chicago': 'CT',
+  'America/New_York': 'ET',
+  'America/Phoenix': 'MST',
+  'America/Anchorage': 'Alaska',
+  'Pacific/Honolulu': 'HST',
+  UTC: 'UTC',
+  'Europe/London': 'London',
+  'Europe/Paris': 'Paris',
+  'Asia/Tokyo': 'JST',
+  'Asia/Kolkata': 'IST',
+  'Australia/Sydney': 'AET',
+};
+
+/** Short label for student session date line (stable where DST would confuse, e.g. PT not PDT). */
 export function abbreviationForTimezone(iana) {
   if (!iana || typeof iana !== 'string') return '';
+  const key = iana.trim();
+  if (STABLE_TZ_ABBREV[key]) return STABLE_TZ_ABBREV[key];
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: iana.trim(),
+      timeZone: key,
       timeZoneName: 'short',
     }).formatToParts(new Date());
     const hit = parts.find(p => p.type === 'timeZoneName');
-    return hit && hit.value ? hit.value.trim() : iana;
+    const short = hit && hit.value ? hit.value.trim() : '';
+    if (!short) return key;
+    // US zones not in the table: collapse DST-specific English abbreviations to generic wall-clock labels.
+    if (/^(PDT|PST)$/.test(short)) return 'PT';
+    if (/^(MDT|MST)$/.test(short) && key !== 'America/Phoenix') return 'MT';
+    if (/^(CDT|CST)$/.test(short)) return 'CT';
+    if (/^(EDT|EST)$/.test(short)) return 'ET';
+    if (/^(AKDT|AKST)$/.test(short)) return 'Alaska';
+    if (/^(BST|GMT)$/.test(short)) return 'London';
+    if (/^(CEST|CET)$/.test(short)) return 'Paris';
+    if (/^(AEDT|AEST|ACDT|ACST)$/.test(short)) return 'AET';
+    return short;
   } catch (e) {
-    return iana;
+    return key;
   }
 }
 
