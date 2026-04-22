@@ -20,6 +20,7 @@ All notable changes to this project are documented here. Newest first.
 - **Toolbar:** solid-blue “active” styling applies only to **All / Pinned / Unanswered / Answered** (`data-filter`); **Most votes** / **Instructor notes** use the same solid fill when on, with a **Sort** label so it is clear sort is separate from status (both can be active at once).
 - **Toolbar layout:** status chips, **Sort** + Most votes, then instructor notes are grouped so sort is not mistaken for another status pill.
 - **Session sidebar (student):** date/time line supports **Firestore `Timestamp`** (and `{ seconds }` shapes), not only plain strings, so updates from the host show correctly after **Save session info**.
+- **Session date (instructor + student):** `<input type="date">` values (`YYYY-MM-DD`) are parsed as **local calendar dates** when saving and when filling the form — avoids the common off-by-one day bug from `new Date("YYYY-MM-DD")` (UTC midnight) vs `toLocaleDateString`.
 - **Instructor notes toggle:** `sessionNotes: []` again merges **legacy** `sessionNoteTitle` / `Body` / images when present so the pill is not stuck hidden; **http://** links count for visibility (student list shows them as text; only **https** is clickable).
 - **Instructor notes visibility:** title/body treat **HTML / `&nbsp;`** as empty when there is no real text, so rich-but-empty notes do not fake “has content”; non-**https** image URLs still open via a text link on the student card.
 - **Instructor notes pill:** shown whenever **Show in student dashboard** is on (`sessionNoteShow !== false`), even if the host has not saved any note cards yet — notes panel shows a short empty state until content exists.
@@ -27,6 +28,7 @@ All notable changes to this project are documented here. Newest first.
 
 ### Instructor
 
+- **Session date save:** **Save session info** / **Create session** store **`sessionDate`** using **`YYYY-MM-DD` → local calendar** (see **Session date** under Student) so the value matches the date picker in all timezones.
 - **Session form:** **Date / time** fields load correctly when Firestore returns **`Timestamp`** (not only strings), so saving session info does not wipe or distort values read back from the server.
 - **Session notes attribution:** new cards record **`instructor`** (signed-in instructor name); edits preserve the existing author unless the note predates the field (then the next save assigns the current editor). Editor header shows **Added by …**; students see the same name on each card.
 - **Instructor Notes** sidebar label (replaces “Important”); **Show in student dashboard** checkbox copy.

@@ -17,6 +17,7 @@ import { formatQuestionWhen } from '../lib/formatQuestionWhen.js';
 import { filterCorpusByFuseSearch } from '../lib/questionSearch.js';
 import { fetchSessionQuestionCountStats } from '../lib/sessionQuestionCounts.js';
 import { getSessionNotesFromDoc, SESSION_SIDEBAR_NOTES_MAX, SESSION_NOTE_LINKS_MAX } from '../lib/sessionNotes.js';
+import { parseDateInputLocal, formatDateInputLocal, sessionDateInputToDisplay } from '../lib/sessionDateLocal.js';
 import { htmlAnsweredStatusBadges } from '../lib/answeredBadge.js';
 
 const showToast = createShowToast('toast');
@@ -523,6 +524,10 @@ function firestoreDateLikeToDate(val) {
       return isNaN(d) ? null : d;
     }
   }
+  if (typeof val === 'string') {
+    const local = parseDateInputLocal(val);
+    if (local) return local;
+  }
   const d = new Date(val);
   return isNaN(d) ? null : d;
 }
@@ -539,7 +544,7 @@ function fillSessionForm(s) {
   refreshSessionNotesDraftFromSession(s);
   renderSessionNotesEditor();
   const dateObj = firestoreDateLikeToDate(s.sessionDate);
-  document.getElementById('sf-date').value = dateObj ? dateObj.toISOString().split('T')[0] : '';
+  document.getElementById('sf-date').value = dateObj ? formatDateInputLocal(dateObj) : '';
   const timeObj = firestoreDateLikeToDate(s.sessionTime);
   document.getElementById('sf-time').value = timeObj
     ? `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`
@@ -1381,7 +1386,7 @@ function confirmCreateSession() {
     sessionName,
     instructorNames: currentInstructor || '',
     instructors: currentInstructor ? [currentInstructor] : [],
-    sessionDate: dateVal ? new Date(dateVal).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '',
+    sessionDate: dateVal ? sessionDateInputToDisplay(dateVal) : '',
     sessionTime: timeVal ? formatDisplayTime(timeVal) : '',
     room: document.getElementById('new-sf-room').value.trim(),
     description: document.getElementById('new-sf-desc').value.trim(),
@@ -1440,7 +1445,7 @@ function saveSession() {
   }
   const payload = {
     sessionName: document.getElementById('sf-session').value.trim(),
-    sessionDate: dateVal ? new Date(dateVal).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '',
+    sessionDate: dateVal ? sessionDateInputToDisplay(dateVal) : '',
     sessionTime: timeVal ? formatDisplayTime(timeVal) : '',
     room: document.getElementById('sf-room').value.trim(),
     description: document.getElementById('sf-desc').value.trim(),

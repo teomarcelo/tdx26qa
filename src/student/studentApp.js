@@ -22,6 +22,7 @@ import {
   getStudentVisibleSessionNotes,
   isStudentInstructorNotesDashboardEnabled,
 } from '../lib/sessionNotes.js';
+import { parseDateInputLocal } from '../lib/sessionDateLocal.js';
 import { getEffectiveStudentOrgClaimUrl, getStudentOrgClaimCodeOnly } from '../lib/sessionLaunch.js';
 import {
   SESSION_JOIN_PREFIX,
@@ -235,6 +236,12 @@ function studentSessionDisplayTitle(s) {
 /** Normalize Firestore Timestamp / plain seconds object / string for sidebar date line. */
 function studentFormatSessionDatePart(val) {
   if (val == null || val === '') return '';
+  if (typeof val === 'string') {
+    var localFromInput = parseDateInputLocal(val);
+    if (localFromInput) {
+      return localFromInput.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+  }
   if (typeof val === 'object') {
     if (typeof val.toDate === 'function') {
       try {
