@@ -194,8 +194,8 @@
     </div>
   </div>
 
-  <!-- Inside #app-screen so this stays hidden with the shell before CSS loads (e.g. GitHub Pages). -->
-  <div class="modal-overlay" id="edit-modal">
+  <!-- Inside #app-screen; hidden attr until openEdit so layout cannot flash if CSS is slow. -->
+  <div class="modal-overlay" id="edit-modal" hidden aria-hidden="true">
     <div class="modal">
       <div class="modal-title">Edit your question</div>
       <div class="format-toolbar" role="toolbar" aria-label="Insert formatting">

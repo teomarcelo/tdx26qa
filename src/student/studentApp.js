@@ -1152,9 +1152,22 @@ function openEdit(id) {
   if (!q) return;
   editingId = id;
   document.getElementById('edit-text').value = q.text;
-  document.getElementById('edit-modal').classList.add('open');
+  const modal = document.getElementById('edit-modal');
+  if (modal) {
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    modal.classList.add('open');
+  }
 }
-function closeEdit() { document.getElementById('edit-modal').classList.remove('open'); editingId = null; }
+function closeEdit() {
+  const modal = document.getElementById('edit-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  editingId = null;
+}
 function saveEdit() {
   const text = document.getElementById('edit-text').value.trim();
   if (!text || !editingId) return;
