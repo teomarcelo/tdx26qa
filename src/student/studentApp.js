@@ -23,6 +23,7 @@ import {
   isStudentInstructorNotesDashboardEnabled,
 } from '../lib/sessionNotes.js';
 import { parseDateInputLocal } from '../lib/sessionDateLocal.js';
+import { abbreviationForTimezone } from '../lib/sessionTimezones.js';
 import { getEffectiveStudentOrgClaimUrl, getStudentOrgClaimCodeOnly } from '../lib/sessionLaunch.js';
 import {
   SESSION_JOIN_PREFIX,
@@ -195,7 +196,7 @@ function joinSession() {
   const row = sufEl && sufEl.closest('.' + JOIN_CODE_ROW_CLASS);
   const code = buildSessionCodeFromJoinRow(sufEl);
   if (!code || code === SESSION_JOIN_PREFIX) {
-    showJoinError('Enter the four characters after SQA- (or paste a full TDX- code).');
+    showJoinError('Enter the session code.');
     return;
   }
   if (row && !row.classList.contains(JOIN_CODE_ROW_LEGACY_TDX_CLASS)) {
@@ -203,7 +204,7 @@ function joinSession() {
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, '');
     if (suf.length < 4) {
-      showJoinError('Enter all four characters after SQA-.');
+      showJoinError('Enter all four characters.');
       return;
     }
   }
@@ -287,8 +288,10 @@ function studentSessionDateTimeLine(s) {
   if (!s) return '—';
   var d = studentFormatSessionDatePart(s.sessionDate);
   var t = studentFormatSessionTimePart(s.sessionTime);
-  var line = [d, t].filter(Boolean).join(' · ');
-  return line || '—';
+  var tz = abbreviationForTimezone(String(s.sessionTimezone || '').trim());
+  var parts = [d, t].filter(Boolean);
+  if (tz) parts.push(tz);
+  return parts.length ? parts.join(' · ') : '—';
 }
 
 /** Apply Firestore session fields to UI (sidebar card, OrgClaim/Survey, notes, top bar). */
@@ -324,6 +327,7 @@ function syncStudentInstructorNotesToggleVisibility(optSession) {
     var sessionIsCurrent = typeof optSession === 'undefined' || s === currentSession;
     if (sessionIsCurrent && studentFeedView === 'notes') {
       studentFeedView = 'qa';
+      applyStudentFeedViewDom();
     }
   }
 }
@@ -333,7 +337,10 @@ function applyStudentFeedViewDom() {
   var listChromeBlocks = document.querySelectorAll('.student-qa-list-chrome');
   var notesPanel = document.getElementById('student-notes-feed-panel');
   var toggleBtn = document.getElementById('student-feed-notes-toggle');
-  if (!listChromeBlocks.length || !notesPanel) return;
+  if (!listChromeBlocks.length || !notesPanel) {
+    syncStudentQuestionToolbarUi();
+    return;
+  }
   var notesAvailable = studentInstructorNotesDashboardEnabled();
   var showNotes = studentFeedView === 'notes' && notesAvailable;
   listChromeBlocks.forEach(function (el) {
@@ -345,6 +352,7 @@ function applyStudentFeedViewDom() {
     toggleBtn.classList.remove('active');
     toggleBtn.setAttribute('aria-pressed', showNotes ? 'true' : 'false');
   }
+  syncStudentQuestionToolbarUi();
 }
 
 function toggleStudentInstructorNotes(btn) {
@@ -387,8 +395,9 @@ function enterApp() {
   hasMoreOlder = false;
   studentOlderBeyondLoadExhausted = false;
   allQuestions = [];
+  currentFilter = 'all';
   currentSort = 'recent';
-  syncStudentSortVotesButton();
+  syncStudentQuestionToolbarUi();
   var qsIn = document.getElementById('questions-search');
   if (qsIn) qsIn.value = '';
 
@@ -453,6 +462,9 @@ function leaveSession() {
   sessionCode = null;
   currentSession = null;
   studentFeedView = 'qa';
+  currentFilter = 'all';
+  currentSort = 'recent';
+  syncStudentQuestionToolbarUi();
   studentSessionStatsSerial++;
   clearStudentRestoringShell();
   document.getElementById('join-screen').style.display = 'flex';
@@ -1254,6 +1266,8 @@ function submitQuestion() {
     if (studentFeedView === 'notes') {
       studentFeedView = 'qa';
       applyStudentFeedViewDom();
+    } else {
+      syncStudentQuestionToolbarUi();
     }
     currentQuestionPage = 0;
     questionPages = [];
@@ -1307,6 +1321,70 @@ function toggleUpvote(id) {
     });
 }
 
+function openStudentFeedbackModal() {
+  var sub = document.getElementById('feedback-subject');
+  var body = document.getElementById('feedback-body');
+  if (sub) sub.value = '';
+  if (body) body.value = '';
+  var modal = document.getElementById('student-feedback-modal');
+  if (modal) {
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    modal.classList.add('open');
+    if (sub) {
+      try {
+        sub.focus();
+      } catch (e2) {}
+    }
+  }
+}
+
+function closeStudentFeedbackModal() {
+  var modal = document.getElementById('student-feedback-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+/** Anonymous feedback: Firestore only (no mail client, no reply path, no student email stored). */
+function submitStudentFeedback() {
+  var subEl = document.getElementById('feedback-subject');
+  var bodyEl = document.getElementById('feedback-body');
+  var sub = (subEl && subEl.value ? String(subEl.value) : '').trim();
+  var body = (bodyEl && bodyEl.value ? String(bodyEl.value) : '').trim();
+  if (!sub) {
+    showToast('Please enter a subject.');
+    return;
+  }
+  if (!body) {
+    showToast('Please enter a message.');
+    return;
+  }
+  var payload = {
+    subject: sub.slice(0, 500),
+    body: body.slice(0, 12000),
+    sessionCode: sessionCode || '',
+    submittedAtMs: Date.now(),
+  };
+
+  if (!db) {
+    showToast('Feedback cannot be sent right now. Check your connection and try again.');
+    return;
+  }
+  db
+    .collection('dashboardFeedback')
+    .add(payload)
+    .then(function () {
+      closeStudentFeedbackModal();
+      showToast('Thanks — your feedback was sent.');
+    })
+    .catch(function (e) {
+      showToast('Could not send feedback: ' + (e && e.message ? e.message : String(e)));
+    });
+}
+
 function openEdit(id) {
   const q = findStudentQuestionById(id);
   if (!q) return;
@@ -1339,30 +1417,38 @@ function saveEdit() {
   });
 }
 
+/** Apply toolbar chip classes from `currentFilter`, `currentSort`, and `studentFeedView` (single source of truth). */
+function syncStudentQuestionToolbarUi() {
+  var filtersWrap = document.querySelector('#student-q-toolbar .student-q-toolbar-filters');
+  if (!filtersWrap) return;
+  var qa = studentFeedView === 'qa';
+  var votesOn = qa && currentSort === 'votes';
+  filtersWrap.querySelectorAll('.filter-btn').forEach(function (b) {
+    b.classList.remove('filter-btn-aux-on');
+    if (b.id === 'student-sort-votes-btn') {
+      b.classList.toggle('active', votesOn);
+      b.setAttribute('aria-pressed', votesOn ? 'true' : 'false');
+    } else {
+      var key = b.getAttribute('data-filter');
+      b.classList.toggle('active', !!(qa && !votesOn && key === currentFilter));
+    }
+  });
+  var notesBtn = document.getElementById('student-feed-notes-toggle');
+  if (notesBtn) {
+    notesBtn.classList.remove('active');
+  }
+}
+
 function setFilter(f, btn) {
   if (studentFeedView === 'notes') {
     studentFeedView = 'qa';
     applyStudentFeedViewDom();
   }
   currentFilter = f;
-  document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
-  ['student-sort-votes-btn', 'student-feed-notes-toggle'].forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) el.classList.remove('active');
-  });
-  if (btn) btn.classList.add('active');
+  currentSort = 'recent';
   renderQuestions();
-  syncStudentSortVotesButton();
+  syncStudentQuestionToolbarUi();
   syncStudentInstructorNotesToggleVisibility();
-}
-
-function syncStudentSortVotesButton() {
-  var b = document.getElementById('student-sort-votes-btn');
-  if (!b) return;
-  var on = currentSort === 'votes';
-  b.classList.toggle('filter-btn-aux-on', on);
-  b.classList.remove('active');
-  b.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
 /** Default order is newest first; click to sort by votes, click again to return to newest first. */
@@ -1372,7 +1458,7 @@ function toggleStudentSortVotes(btn) {
     applyStudentFeedViewDom();
   }
   currentSort = currentSort === 'votes' ? 'recent' : 'votes';
-  syncStudentSortVotesButton();
+  syncStudentQuestionToolbarUi();
   renderQuestions();
   if (btn && typeof btn.focus === 'function') {
     try {
@@ -2107,6 +2193,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('touchstart', closeFmtEmojiPickersIfOutside, { capture: true, passive: true });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    closeStudentFeedbackModal();
     document.querySelectorAll('details.fmt-emoji-more[open]').forEach(function (d) { d.open = false; });
   });
   initStudentSidebarResizer();
@@ -2130,4 +2217,7 @@ Object.assign(globalThis, {
   goStudentToPage,
   goStudentNextPage,
   openEdit,
+  openStudentFeedbackModal,
+  closeStudentFeedbackModal,
+  submitStudentFeedback,
 });

@@ -56,8 +56,7 @@
   }
   .join-logo-mark svg { color: white; }
   .join-logo-text { font-weight: 600; font-size: 1.1rem; letter-spacing: -0.02em; }
-  .join-title { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.03em; margin-bottom: 0.5rem; }
-  .join-sub { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; line-height: 1.5; }
+  .join-title { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.03em; margin-bottom: 1.5rem; }
   .field { margin-bottom: 1.2rem; }
   .field label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
   .field input, .field textarea {
@@ -220,9 +219,83 @@
     flex: 0 0 var(--student-sidebar-px);
     width: var(--student-sidebar-px);
     min-width: 0;
+    min-height: 0;
     max-width: min(560px, 48vw);
-    overflow-x: hidden;
+    /* Desktop: full viewport column + sticky so feedback footer stays at bottom while main scrolls */
+    align-self: flex-start;
+    height: calc(100vh - 56px);
+    min-height: calc(100vh - 56px);
+    max-height: calc(100vh - 56px);
+    position: sticky;
+    top: 56px;
+    z-index: 4;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface2);
     transition: flex-basis 0.22s ease, width 0.22s ease, opacity 0.18s ease, padding 0.22s ease, border-color 0.22s ease;
+  }
+  .student-sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 1.5rem;
+    padding-bottom: 0.65rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  .student-sidebar-footer {
+    flex-shrink: 0;
+    margin-top: auto;
+    padding: 0.65rem 1.25rem 1rem;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface2) 92%, var(--border));
+    box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    text-align: center;
+  }
+  .student-feedback-hint {
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin: 0;
+    max-width: 16rem;
+  }
+  .student-feedback-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.12s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  .student-feedback-icon-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .student-feedback-icon-btn:active {
+    transform: scale(0.96);
+  }
+  .student-feedback-modal-lead {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: -0.35rem 0 1rem;
+  }
+  .student-feedback-body {
+    width: 100%;
+    resize: vertical;
+    min-height: 120px;
   }
   .app-layout--sidebar-collapsed .side-col {
     flex-basis: 0 !important;
@@ -252,14 +325,19 @@
       max-width: none !important;
       opacity: 1 !important;
       pointer-events: auto !important;
-      padding-left: 1.5rem !important;
-      padding-right: 1.5rem !important;
     }
     .side-col {
       order: -1;
       width: 100% !important;
       flex: none !important;
       max-width: none !important;
+      position: relative;
+      top: auto;
+      align-self: stretch;
+      height: auto;
+      min-height: 0;
+      max-height: none;
+      z-index: auto;
       border-bottom: 1px solid var(--border);
     }
     .main-col {
@@ -1203,15 +1281,35 @@
   }
   .q-edit-btn:hover { color: var(--accent); }
 
-  /* Sidebar */
-  .side-col { padding: 1.5rem; background: var(--surface2); }
+  /* Sidebar — padding lives on .student-sidebar-scroll */
   .side-section { margin-bottom: 1.35rem; }
   .side-section:last-child { margin-bottom: 0; }
   .side-title { font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.75rem; }
-  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .stat-card { background: white; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem; text-align: center; }
-  .stat-num { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.03em; }
-  .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  /* Session stats (sidebar) — slightly compact */
+  .side-col .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+  .side-col .stat-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.45rem;
+    text-align: center;
+  }
+  .side-col .stat-num {
+    font-size: 1.28rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .side-col .stat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 1px;
+    line-height: 1.2;
+  }
 
   .filter-btns { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .filter-btn {
@@ -1225,20 +1323,26 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-  /* Solid fill only for status chips (All / Pinned / …). Sort + Instructor notes must not use .active or they read as a second primary. */
-  .filter-btn[data-filter].active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-  }
-  /* Sort + instructor notes when “on” — same solid primary as status (Sort label separates meaning). */
-  .filter-btn.filter-btn-aux-on {
+  /* Exactly one of All / Pinned / Unanswered / Answered / Most votes uses .active (synced in JS). */
+  .student-q-toolbar-filters .filter-btn.active {
     background: var(--accent);
     border-color: var(--accent);
     color: white;
     font-weight: 600;
   }
-  .filter-btn.filter-btn-aux-on:hover {
+  .student-q-toolbar-filters .filter-btn.active:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: white;
+  }
+  /* Instructor notes “on” — separate from the sort row; still uses .filter-btn-aux-on. */
+  .student-q-toolbar-notes .filter-btn.filter-btn-aux-on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-weight: 600;
+  }
+  .student-q-toolbar-notes .filter-btn.filter-btn-aux-on:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
     color: white;

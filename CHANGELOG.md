@@ -4,7 +4,15 @@ All notable changes to this project are documented here. Newest first.
 
 ---
 
-## 2026-04-18 (later)
+## 2026-04-23
+
+### Added
+
+- **Student sidebar:** **Session** details are **above** **Session stats**; footer with short copy + envelope control opens **Dashboard feedback** (subject + body). Submits an **anonymous** Firestore row on **`dashboardFeedback`** (see **`firestore.rules`**); no mail client and no reply path.
+
+### Changed
+
+- **Question pagination:** Firestore page size is **10** questions per page (was 25), via **`QUESTIONS_PAGE_SIZE`** in **`src/constants/app.js`** (student + instructor).
 
 ### Docs
 
@@ -19,7 +27,7 @@ All notable changes to this project are documented here. Newest first.
 - **Instructor notes visibility:** toggle stays in sync with Firestore even when the notes list node is missing on first paint; **https links** count as visible note content again.
 - **Toolbar:** solid-blue “active” styling applies only to **All / Pinned / Unanswered / Answered** (`data-filter`); **Most votes** / **Instructor notes** use the same solid fill when on, with a **Sort** label so it is clear sort is separate from status (both can be active at once).
 - **Toolbar layout:** **Sort** label on the **far left**, then All / Pinned / Unanswered / Answered / Most votes in one row; separator and **Instructor notes** follow.
-- **Session sidebar (student):** date/time line supports **Firestore `Timestamp`** (and `{ seconds }` shapes), not only plain strings, so updates from the host show correctly after **Save session info**.
+- **Session sidebar (student):** date/time line supports **Firestore `Timestamp`** (and `{ seconds }` shapes), not only plain strings, so updates from the host show correctly after **Save session info**; when **`sessionTimezone`** is set, the line ends with a short zone label (e.g. **PDT**) from **`Intl`**.
 - **Session date (instructor + student):** `<input type="date">` values (`YYYY-MM-DD`) are parsed as **local calendar dates** when saving and when filling the form — avoids the common off-by-one day bug from `new Date("YYYY-MM-DD")` (UTC midnight) vs `toLocaleDateString`.
 - **Instructor notes toggle:** `sessionNotes: []` again merges **legacy** `sessionNoteTitle` / `Body` / images when present so the pill is not stuck hidden; **http://** links count for visibility (student list shows them as text; only **https** is clickable).
 - **Instructor notes visibility:** title/body treat **HTML / `&nbsp;`** as empty when there is no real text, so rich-but-empty notes do not fake “has content”; non-**https** image URLs still open via a text link on the student card.
@@ -28,31 +36,12 @@ All notable changes to this project are documented here. Newest first.
 
 ### Instructor
 
+- **Session timezone:** **Session settings** and **Create session** include a **timezone** dropdown (stored as IANA **`sessionTimezone`** on `sessions/{code}`; default **America/Los_Angeles**). Options live in **`src/lib/sessionTimezones.js`**.
 - **Session date save:** **Save session info** / **Create session** store **`sessionDate`** using **`YYYY-MM-DD` → local calendar** (see **Session date** under Student) so the value matches the date picker in all timezones.
 - **Session form:** **Date / time** fields load correctly when Firestore returns **`Timestamp`** (not only strings), so saving session info does not wipe or distort values read back from the server.
 - **Session notes attribution:** new cards record **`instructor`** (signed-in instructor name); edits preserve the existing author unless the note predates the field (then the next save assigns the current editor). Editor header shows **Added by …**; students see the same name on each card.
 - **Instructor Notes** sidebar label (replaces “Important”); **Show in student dashboard** checkbox copy.
 - **Edit** saved answer text/images on a thread.
-
----
-
-## 2026-04-18
-
-### Changed
-
-- **Class name removed** from instructor session UI, create modal, saves, and student titles (only **session name** is used). Saving session info deletes legacy **`className`** on the Firestore session document.
-- **Join session (student + instructor):** split row — fixed **`SQA-`** label plus a suffix field (no more deleting the prefix or caret jumps). Paste **`TDX-…`** to switch to legacy full-code mode (label hides). **`src/lib/sessionCode.js`** owns sync + `buildSessionCodeFromJoinRow` / `setJoinRowFromSessionCode`.
-- **Student Instructor Notes:** moved out of the Session sidebar; students open notes via the **Instructor notes** control on the filter row (see **2026-04-18 (later)** for current toggle + layout).
-
-### Added
-
-- **Multiple session sidebar notes:** Instructors can add several independent note cards (title, body with formatting toolbar, image URLs, per-note visibility). **Drag the handle (⠿)** to reorder before saving. Stored as `sessionNotes` on `sessions/{code}` (capped at 15). Students see each note as its own card when the notes feed is open. **Legacy** single `sessionNoteTitle` / `sessionNoteBody` / `sessionNoteImageUrls` still works when `sessionNotes` is absent. Shared helpers in **`src/lib/sessionNotes.js`**.
-- **Named links** on each session note (instructor editor + Firestore): optional **https** URL plus optional **display name** (capped per note in **`sessionNotes.js`**); not listed separately on the student board (body links still render).
-- **Student layout:** Session sidebar is **resizable** (drag the strip between feed and sidebar), **collapsible** via the **chevron** control, width persisted in **`localStorage`**. Below **768px** the layout stacks and the resizer is hidden. The strip shows subtle **‹ ›** hints for drag direction.
-- **Instructor layout:** Left **My sessions** sidebar matches the same **drag / chevron / keyboard** resize and collapse behavior (persisted separately; hidden below **900px**).
-- **Instructor session notes:** Each note card can be **collapsed** (▼) to save space; **+ Add note** collapses all existing cards and opens the new one expanded.
-- **OrgClaim + Survey on student Session card:** **`studentOrgClaimUrl`** (defaults to **`http://sfdc.co/OrgClaim`**) and **`studentOrgClaimCopyText`**; **OrgClaim** above **SURVEY** and always visible; empty OrgClaim code leaves **OrgClaim Code:** with no text after it. Survey ID / https rules unchanged for **SURVEY** (no Survey ID substitute for OrgClaim).
-- **Create session modal:** **+ New session** includes the same core fields as **Session settings** (session name, date/time, room, description, OrgClaim link/code, survey link/ID). After **Create session**, the sidebar form is filled from the saved document so you can continue editing without retyping.
 
 ---
 
@@ -97,6 +86,7 @@ All notable changes to this project are documented here. Newest first.
 
 - **Vite build:** `package.json` + `vite.config.js` multi-page app (`student.html`, `instructor.html`). Shared code under **`src/`** — `config/firebase.js` (optional `VITE_FIREBASE_*` overrides), `constants/` (pagination, poll interval, image limits, PIN pepper), `lib/` (`richText`, `toast`, `formatQuestionWhen`, Fuse-powered **`questionSearch`**), and **`src/instructor/instructorApp.js`** / **`src/student/studentApp.js`** (existing behavior, `globalThis` exports for `onclick` handlers). Styles extracted to **`src/styles/instructor.css`** and **`src/styles/student.css`**. **`scripts/`** contains small HTML rewrite helpers used while migrating.
 - **`npm run dev`** / **`npm run build`**; production output **`dist/`** with **`base: './'`** so assets resolve on GitHub Pages subpaths. **`node_modules/`** and **`dist/`** gitignored.
+- **`index.html`:** Vite dev (and **`dist/`** after build) serves **`/`** as a short hub with links to **`student.html`** and **`instructor.html`**, since this repo has no single-page app root.
 
 ### Documentation
 
@@ -105,10 +95,6 @@ All notable changes to this project are documented here. Newest first.
 ### Fixed
 
 - **`instructor.html` / `student.html`:** Default **`#app-screen`** to **`style="display:none"`** so the main shell does not appear above the login/join UI before bundled CSS loads (avoids seeing both at once in dev or on a slow connection).
-
-### Added
-
-- **`index.html`:** Vite dev (and **`dist/`** after build) serves **`/`** as a short hub with links to **`student.html`** and **`instructor.html`**, since this repo has no single-page app root.
 
 ---
 
@@ -147,20 +133,30 @@ All notable changes to this project are documented here. Newest first.
 
 ## 2026-04-18
 
+### Changed
+
+- **Class name removed** from instructor session UI, create modal, saves, and student titles (only **session name** is used). Saving session info deletes legacy **`className`** on the Firestore session document.
+- **Join session (student + instructor):** split row — fixed **`SQA-`** label plus a suffix field (no more deleting the prefix or caret jumps). Paste **`TDX-…`** to switch to legacy full-code mode (label hides). **`src/lib/sessionCode.js`** owns sync + `buildSessionCodeFromJoinRow` / `setJoinRowFromSessionCode`.
+- **Student Instructor Notes:** moved out of the Session sidebar; students open notes via the **Instructor notes** control on the filter row (see **2026-04-23** for current toggle + layout).
+- Instructor help copy for session sidebar aligned with formatting capabilities.
+
 ### Added
 
+- **Multiple session sidebar notes:** Instructors can add several independent note cards (title, body with formatting toolbar, image URLs, per-note visibility). **Drag the handle (⠿)** to reorder before saving. Stored as `sessionNotes` on `sessions/{code}` (capped at 15). Students see each note as its own card when the notes feed is open. **Legacy** single `sessionNoteTitle` / `sessionNoteBody` / `sessionNoteImageUrls` still works when `sessionNotes` is absent. Shared helpers in **`src/lib/sessionNotes.js`**.
+- **Named links** on each session note (instructor editor + Firestore): optional **https** URL plus optional **display name** (capped per note in **`sessionNotes.js`**); not listed separately on the student board (body links still render).
+- **Student layout:** Session sidebar is **resizable** (drag the strip between feed and sidebar), **collapsible** via the **chevron** control, width persisted in **`localStorage`**. Below **768px** the layout stacks and the resizer is hidden. The strip shows subtle **‹ ›** hints for drag direction.
+- **Instructor layout:** Left **My sessions** sidebar matches the same **drag / chevron / keyboard** resize and collapse behavior (persisted separately; hidden below **900px**).
+- **Instructor session notes:** Each note card can be **collapsed** (▼) to save space; **+ Add note** collapses all existing cards and opens the new one expanded.
+- **OrgClaim + Survey on student Session card:** **`studentOrgClaimUrl`** (defaults to **`http://sfdc.co/OrgClaim`**) and **`studentOrgClaimCopyText`**; **OrgClaim** above **SURVEY** and always visible; empty OrgClaim code leaves **OrgClaim Code:** with no text after it. Survey ID / https rules unchanged for **SURVEY** (no Survey ID substitute for OrgClaim).
+- **Create session modal:** **+ New session** includes the same core fields as **Session settings** (session name, date/time, room, description, OrgClaim link/code, survey link/ID). After **Create session**, the sidebar form is filled from the saved document so you can continue editing without retyping.
 - **Slack-style rich text** (rendered safely after escape): `*bold*`, `_italic_`, `~strikethrough~`, `` `inline code` ``, fenced ` ``` ` code blocks, Unicode emojis, auto-linked `https://` URLs.
 - **Where it applies:** Session “Important” note, question bodies, and instructor answers on both pages; instructor session sidebar message and per-question answer boxes (delegated clicks), and student-view demo ask/edit.
 - **Format toolbars:** Buttons insert markers around the selection (or placeholder text) on student ask + edit modal; instructor session sidebar message, per-question answer boxes, and student-view demo ask/edit.
-
-### Changed
-
-- Instructor help copy for session sidebar aligned with formatting capabilities.
 
 ---
 
 ## Earlier (pre-changelog)
 
-Shipped features already described in **`README.md`** (roadmap / stack) include question pagination (25 per page), student polling, instructor live listener on the newest page, and answer draft preservation.
+Shipped features already described in **`README.md`** (roadmap / stack) include question pagination (10 per page), student polling, instructor live listener on the newest page, and answer draft preservation.
 
 When in doubt, compare **`git log`**.

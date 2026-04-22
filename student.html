@@ -29,10 +29,9 @@
       <span class="join-logo-text">Session Q&amp;A</span>
     </div>
     <h1 class="join-title">Join your session</h1>
-    <p class="join-sub"><strong>SQA-</strong> is fixed on the left — type the last <strong>four</strong> characters, or paste a full <strong>SQA-</strong> or legacy <strong>TDX-</strong> code (the label hides for TDX). This browser reopens your last session after a refresh until you tap <strong>Leave</strong>.</p>
     <div class="field">
       <label for="code-input">Session code</label>
-      <div class="join-code-row" id="student-join-code-row">
+      <div class="join-code-row">
         <span class="join-code-prefix" aria-hidden="true">SQA-</span>
         <input id="code-input" class="code-input code-input--suffix" type="text" maxlength="8" inputmode="text" placeholder="AB12" autocomplete="off" spellcheck="false">
       </div>
@@ -150,51 +149,78 @@
       <div class="student-sidebar-resizer-track" id="student-sidebar-resizer-track" aria-hidden="true"></div>
     </div>
 
-    <!-- Sidebar: controls + session (main feed stays left) -->
+    <!-- Sidebar: session details first, stats, then pinned feedback (main feed stays left) -->
     <div class="side-col" id="student-side-col">
-      <div class="side-section">
-        <div class="side-title">Session stats</div>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-num" id="stat-total">0</div>
-            <div class="stat-label">Total</div>
+      <div class="student-sidebar-scroll">
+        <div class="side-section">
+          <div class="side-title">Session</div>
+          <div class="session-card" id="session-info-card">
+            <div class="session-card-title" id="si-title">Loading...</div>
+            <div class="session-meta" id="si-datetime">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span id="si-datetime-text">—</span>
+            </div>
+            <div class="session-meta">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span id="si-room-text">—</span>
+            </div>
+            <div class="session-card-desc" id="si-desc"></div>
+            <div id="student-orgclaim-launch-wrap" class="student-survey-launch-wrap">
+              <button type="button" class="student-survey-launch-btn" id="student-orgclaim-launch-btn">OrgClaim</button>
+              <div class="student-survey-launch-help" id="student-orgclaim-launch-help" aria-live="polite"></div>
+            </div>
+            <div id="student-survey-launch-wrap" class="student-survey-launch-wrap" style="display:none;">
+              <button type="button" class="student-survey-launch-btn" id="student-survey-launch-btn">SURVEY</button>
+              <div class="student-survey-launch-help" id="student-survey-launch-help" aria-live="polite"></div>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-num" id="stat-answered" style="color:var(--success)">0</div>
-            <div class="stat-label">Answered</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-num" id="stat-pending" style="color:var(--warn)">0</div>
-            <div class="stat-label">Pending</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-num" id="stat-pinned" style="color:var(--pin)">0</div>
-            <div class="stat-label">Pinned</div>
+        </div>
+        <div class="side-section">
+          <div class="side-title">Session stats</div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-num" id="stat-total">0</div>
+              <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="stat-answered" style="color:var(--success)">0</div>
+              <div class="stat-label">Answered</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="stat-pending" style="color:var(--warn)">0</div>
+              <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="stat-pinned" style="color:var(--pin)">0</div>
+              <div class="stat-label">Pinned</div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="side-section">
-        <div class="side-title">Session</div>
-        <div class="session-card" id="session-info-card">
-          <div class="session-card-title" id="si-title">Loading...</div>
-          <div class="session-meta" id="si-datetime">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span id="si-datetime-text">—</span>
-          </div>
-          <div class="session-meta">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span id="si-room-text">—</span>
-          </div>
-          <div class="session-card-desc" id="si-desc"></div>
-          <div id="student-orgclaim-launch-wrap" class="student-survey-launch-wrap">
-            <button type="button" class="student-survey-launch-btn" id="student-orgclaim-launch-btn">OrgClaim</button>
-            <div class="student-survey-launch-help" id="student-orgclaim-launch-help" aria-live="polite"></div>
-          </div>
-          <div id="student-survey-launch-wrap" class="student-survey-launch-wrap" style="display:none;">
-            <button type="button" class="student-survey-launch-btn" id="student-survey-launch-btn">SURVEY</button>
-            <div class="student-survey-launch-help" id="student-survey-launch-help" aria-live="polite"></div>
-          </div>
-        </div>
+      <footer class="student-sidebar-footer" aria-label="Dashboard feedback">
+        <p class="student-feedback-hint">Please share feedback on this dashboard for improvements or suggestions.</p>
+        <button type="button" class="student-feedback-icon-btn" id="student-feedback-open-btn" onclick="openStudentFeedbackModal()" title="Send feedback" aria-label="Send feedback">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="student-feedback-modal" hidden aria-hidden="true" onclick="if (event.target === this) closeStudentFeedbackModal()">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="student-feedback-modal-title">
+      <div class="modal-title" id="student-feedback-modal-title">Dashboard feedback</div>
+      <p class="student-feedback-modal-lead">Send a private note to the team. Nothing opens on your device, no email address is collected, and you will not get a reply.</p>
+      <div class="field" style="margin-bottom:0.75rem;">
+        <label for="feedback-subject">Subject</label>
+        <input id="feedback-subject" type="text" maxlength="500" placeholder="Short summary" autocomplete="off">
+      </div>
+      <div class="field" style="margin-bottom:0.5rem;">
+        <label for="feedback-body">Message</label>
+        <textarea id="feedback-body" class="student-feedback-body" rows="5" maxlength="12000" placeholder="Improvements, bugs, or ideas…"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeStudentFeedbackModal()">Cancel</button>
+        <button type="button" class="btn-submit" onclick="submitStudentFeedback()">Send feedback</button>
       </div>
     </div>
   </div>

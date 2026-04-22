@@ -98,7 +98,11 @@ The student **Session** sidebar always shows **OrgClaim** (above **SURVEY**); th
 
 ### Question pagination
 
-Questions are loaded with `orderBy('createdAt', 'desc')` and a page size of **25**. If Firebase asks you to create an **index** the first time you run a session with questions, follow the link in the error dialog and create it.
+Questions are loaded with `orderBy('createdAt', 'desc')` and a page size of **10** (`QUESTIONS_PAGE_SIZE` in `src/constants/app.js`). If Firebase asks you to create an **index** the first time you run a session with questions, follow the link in the error dialog and create it.
+
+### Student dashboard feedback
+
+Students can submit **subject** + **body** from the sidebar footer. The app writes an **anonymous** row to **`dashboardFeedback`** in Firestore (session code + timestamps only — no student email, no mail app). Deploy **`firestore.rules`** from this repo. Review submissions in the Firebase console under **Firestore → `dashboardFeedback`** (or export). To get messages in an inbox, use a scheduled export, BigQuery, or a small **Cloud Function** + email provider (not included in this static app).
 
 ### Question fields (status badges)
 

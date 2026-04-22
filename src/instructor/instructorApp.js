@@ -18,6 +18,11 @@ import { filterCorpusByFuseSearch } from '../lib/questionSearch.js';
 import { fetchSessionQuestionCountStats } from '../lib/sessionQuestionCounts.js';
 import { getSessionNotesFromDoc, SESSION_SIDEBAR_NOTES_MAX, SESSION_NOTE_LINKS_MAX } from '../lib/sessionNotes.js';
 import { parseDateInputLocal, formatDateInputLocal, sessionDateInputToDisplay } from '../lib/sessionDateLocal.js';
+import {
+  DEFAULT_SESSION_TIMEZONE,
+  SESSION_TIMEZONE_OPTIONS,
+  initSessionTimezoneSelects,
+} from '../lib/sessionTimezones.js';
 import { htmlAnsweredStatusBadges } from '../lib/answeredBadge.js';
 
 const showToast = createShowToast('toast');
@@ -178,6 +183,7 @@ const DEMO_SESSION = {
   instructorNames: '',
   sessionDate: 'Apr 10, 2026',
   sessionTime: '10:00 AM',
+  sessionTimezone: 'America/Los_Angeles',
   room: 'Hall D — Room 214',
   description: 'Intro to Agentforce: architecture, agent types, and how to build your first autonomous agent without code.',
   studentOrgClaimUrl: DEFAULT_STUDENT_ORG_CLAIM_URL,
@@ -543,12 +549,18 @@ function fillSessionForm(s) {
   document.getElementById('session-note-show').checked = (s.sessionNoteShow !== false);
   refreshSessionNotesDraftFromSession(s);
   renderSessionNotesEditor();
+  initSessionTimezoneSelects();
   const dateObj = firestoreDateLikeToDate(s.sessionDate);
   document.getElementById('sf-date').value = dateObj ? formatDateInputLocal(dateObj) : '';
   const timeObj = firestoreDateLikeToDate(s.sessionTime);
   document.getElementById('sf-time').value = timeObj
     ? `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`
     : (displayTimeToTimeInput(s.sessionTime) || '');
+  const tzEl = document.getElementById('sf-timezone');
+  if (tzEl) {
+    const rawTz = String(s.sessionTimezone || '').trim();
+    tzEl.value = SESSION_TIMEZONE_OPTIONS.some(o => o.value === rawTz) ? rawTz : DEFAULT_SESSION_TIMEZONE;
+  }
   // instructors
   const instructors = s.instructors || (s.instructorNames ? s.instructorNames.split(',').map(n=>n.trim()).filter(Boolean) : []);
   renderInstructorList(instructors);
@@ -1350,6 +1362,9 @@ function openCreateSessionModal() {
   document.getElementById('new-sf-survey-url').value = '';
   document.getElementById('new-sf-survey-copy').value = '';
   document.getElementById('create-session-error').textContent = '';
+  initSessionTimezoneSelects();
+  const newTz = document.getElementById('new-sf-timezone');
+  if (newTz) newTz.value = DEFAULT_SESSION_TIMEZONE;
   document.getElementById('create-session-modal').classList.add('open');
 }
 function closeCreateSessionModal() {
@@ -1382,12 +1397,14 @@ function confirmCreateSession() {
   const btn = document.querySelector('#create-session-modal .save-btn');
   btn.disabled = true; btn.textContent = 'Creating...';
   errEl.textContent = '';
+  const tzNew = document.getElementById('new-sf-timezone');
   const sessionPayload = {
     sessionName,
     instructorNames: currentInstructor || '',
     instructors: currentInstructor ? [currentInstructor] : [],
     sessionDate: dateVal ? sessionDateInputToDisplay(dateVal) : '',
     sessionTime: timeVal ? formatDisplayTime(timeVal) : '',
+    sessionTimezone: (tzNew && tzNew.value) || DEFAULT_SESSION_TIMEZONE,
     room: document.getElementById('new-sf-room').value.trim(),
     description: document.getElementById('new-sf-desc').value.trim(),
     studentOrgClaimUrl: orgClaimUrlRaw || DEFAULT_STUDENT_ORG_CLAIM_URL,
@@ -1443,10 +1460,12 @@ function saveSession() {
     showToast('Survey link must start with https://');
     return;
   }
+  const tzSf = document.getElementById('sf-timezone');
   const payload = {
     sessionName: document.getElementById('sf-session').value.trim(),
     sessionDate: dateVal ? sessionDateInputToDisplay(dateVal) : '',
     sessionTime: timeVal ? formatDisplayTime(timeVal) : '',
+    sessionTimezone: (tzSf && tzSf.value) || DEFAULT_SESSION_TIMEZONE,
     room: document.getElementById('sf-room').value.trim(),
     description: document.getElementById('sf-desc').value.trim(),
     studentOrgClaimUrl: orgClaimUrlRaw || DEFAULT_STUDENT_ORG_CLAIM_URL,
@@ -1664,18 +1683,25 @@ function renderQuestions() {
         <textarea class="answer-box" id="ans-${q.id}" placeholder="Type your answer here… Paste links or screenshots (images upload to Firebase Storage)."></textarea>
       </div>
       <div class="q-actions">
-        <button class="action-btn btn-answer" onclick="saveAnswer('${q.id}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-          Save answer
+        <button type="button" class="action-btn btn-answer" onclick="saveAnswer('${q.id}')">
+          <svg class="action-btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Save answer</span>
         </button>
-        <button type="button" class="action-btn btn-done" onclick="setStatus('${q.id}','answered')">✅ Answered verbally</button>
-        <button class="action-btn btn-pin" onclick="togglePin('${q.id}')">
-          📌 ${q.pinned?'Unpin':'Pin'}
+        <button type="button" class="action-btn btn-done" onclick="setStatus('${q.id}','answered')">
+          <svg class="action-btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>Answered verbally</span>
         </button>
-        <button type="button" class="action-btn btn-pending" onclick="setStatus('${q.id}','pending')">⏳ Mark pending</button>
-        <button class="action-btn btn-delete" onclick="openDelete('${q.id}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          Delete
+        <button type="button" class="action-btn btn-pin" onclick="togglePin('${q.id}')">
+          <svg class="action-btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.76V7a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3.76Z"/></svg>
+          <span>${q.pinned ? 'Unpin' : 'Pin'}</span>
+        </button>
+        <button type="button" class="action-btn btn-pending" onclick="setStatus('${q.id}','pending')">
+          <svg class="action-btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Mark pending</span>
+        </button>
+        <button type="button" class="action-btn btn-delete" onclick="openDelete('${q.id}')">
+          <svg class="action-btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          <span>Delete</span>
         </button>
       </div>
     </div>`;
@@ -2733,6 +2759,7 @@ function initInstructorSidebarResizer() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initSessionTimezoneSelects();
   initFmtEmojiPickerLayout();
   fillFmtEmojiPickerGrids();
   initInstructorSidebarResizer();
