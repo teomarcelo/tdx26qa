@@ -242,7 +242,28 @@ function studentHasVisibleInstructorNotes() {
   return !!(currentSession && getStudentVisibleSessionNotes(currentSession).length);
 }
 
+/** Keep the Instructor notes pill in sync with session data (even if #session-notes-list is missing). */
+function syncStudentInstructorNotesToggleVisibility(optSession) {
+  var s = typeof optSession !== 'undefined' ? optSession : currentSession;
+  var toggleBtn = document.getElementById('student-feed-notes-toggle');
+  if (!toggleBtn) return;
+  var notes = getStudentVisibleSessionNotes(s);
+  var has = notes.length > 0;
+  if (has) {
+    toggleBtn.classList.remove('is-hidden');
+    toggleBtn.removeAttribute('aria-hidden');
+  } else {
+    toggleBtn.classList.add('is-hidden');
+    toggleBtn.setAttribute('aria-hidden', 'true');
+    var sessionIsCurrent = typeof optSession === 'undefined' || s === currentSession;
+    if (sessionIsCurrent && studentFeedView === 'notes') {
+      studentFeedView = 'qa';
+    }
+  }
+}
+
 function applyStudentFeedViewDom() {
+  syncStudentInstructorNotesToggleVisibility();
   var listChromeBlocks = document.querySelectorAll('.student-qa-list-chrome');
   var notesPanel = document.getElementById('student-notes-feed-panel');
   var toggleBtn = document.getElementById('student-feed-notes-toggle');
@@ -508,25 +529,17 @@ function renderSessionInfo(s) {
 }
 
 function renderSessionNote(s) {
+  syncStudentInstructorNotesToggleVisibility(s);
   var listEl = document.getElementById('session-notes-list');
-  var toggleBtn = document.getElementById('student-feed-notes-toggle');
-  if (!listEl) return;
   var notes = getStudentVisibleSessionNotes(s);
-  if (!notes.length) {
-    listEl.innerHTML = '';
-    if (toggleBtn) {
-      toggleBtn.classList.add('is-hidden');
-      toggleBtn.setAttribute('aria-hidden', 'true');
-    }
-    if (studentFeedView === 'notes') {
-      studentFeedView = 'qa';
-    }
+  if (!listEl) {
     applyStudentFeedViewDom();
     return;
   }
-  if (toggleBtn) {
-    toggleBtn.classList.remove('is-hidden');
-    toggleBtn.removeAttribute('aria-hidden');
+  if (!notes.length) {
+    listEl.innerHTML = '';
+    applyStudentFeedViewDom();
+    return;
   }
   listEl.innerHTML = notes.map(function (n) {
     var t = String(n.title || '').trim();
@@ -539,7 +552,41 @@ function renderSessionNote(s) {
       return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
     }).join('');
     var imgBlock = imgs ? '<div class="session-note-images">' + imgs + '</div>' : '';
-    return '<div class="session-note-card">' + titleHtml + bodyHtml + imgBlock + '</div>';
+    var rawLinks = Array.isArray(n.links) ? n.links : [];
+    var linkUrls = rawLinks
+      .map(function (l) {
+        return String((l && (l.url || l.href)) || '').trim();
+      })
+      .filter(function (u) {
+        return /^https:\/\//i.test(u);
+      });
+    var linksHtml = '';
+    if (linkUrls.length) {
+      linksHtml =
+        '<ul class="session-note-links-plain">' +
+        linkUrls
+          .map(function (url) {
+            var safeHref = esc(url);
+            var display = url;
+            try {
+              var parsed = new URL(url);
+              display = parsed.hostname + parsed.pathname.replace(/\/$/, '');
+            } catch (e) {}
+            if (display.length > 72) {
+              display = display.slice(0, 69) + '...';
+            }
+            return (
+              '<li><a href="' +
+              safeHref +
+              '" target="_blank" rel="noopener noreferrer">' +
+              esc(display) +
+              '</a></li>'
+            );
+          })
+          .join('') +
+        '</ul>';
+    }
+    return '<div class="session-note-card">' + titleHtml + bodyHtml + imgBlock + linksHtml + '</div>';
   }).join('');
   applyStudentFeedViewDom();
 }

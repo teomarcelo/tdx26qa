@@ -394,6 +394,17 @@
     border: 1px solid var(--border);
     background: var(--surface2);
   }
+  .session-note-links-plain {
+    margin: 0.5rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+  }
+  .session-note-links-plain a {
+    color: var(--accent);
+    word-break: break-all;
+  }
 
   .questions-search-row {
     display: flex;

@@ -55,14 +55,20 @@ export function getSessionNotesFromDoc(s) {
   }];
 }
 
+function noteHasStudentVisibleContent(n) {
+  if (String(n.title || '').trim() || String(n.body || '').trim()) return true;
+  if ((n.imageUrls || []).length) return true;
+  const links = Array.isArray(n.links) ? n.links : [];
+  return links.some(l => {
+    const u = String((l && (l.url || l.href)) || '').trim();
+    return /^https:\/\//i.test(u);
+  });
+}
+
 /** Notes visible on the student board (master switch + per-note show + non-empty). */
 export function getStudentVisibleSessionNotes(s) {
   if (!s || s.sessionNoteShow === false) return [];
   return getSessionNotesFromDoc(s).filter(
-    n => n.show !== false && (
-      String(n.title || '').trim() ||
-      String(n.body || '').trim() ||
-      (n.imageUrls || []).length
-    )
+    n => n.show !== false && noteHasStudentVisibleContent(n),
   );
 }
