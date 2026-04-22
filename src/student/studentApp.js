@@ -1348,7 +1348,7 @@ function closeStudentFeedbackModal() {
   }
 }
 
-/** Anonymous feedback: Firestore only (no mail client, no reply path, no student email stored). */
+/** Anonymous feedback → `sessions/{sessionCode}/sessionFeedback` (no mail client, no reply path, no student email). */
 function submitStudentFeedback() {
   var subEl = document.getElementById('feedback-subject');
   var bodyEl = document.getElementById('feedback-body');
@@ -1362,11 +1362,15 @@ function submitStudentFeedback() {
     showToast('Please enter a message.');
     return;
   }
+  var code = sessionCode || '';
+  if (!code) {
+    showToast('Join a session before sending feedback.');
+    return;
+  }
   var payload = {
     subject: sub.slice(0, 500),
     body: body.slice(0, 12000),
-    sessionCode: sessionCode || '',
-    submittedAtMs: Date.now(),
+    submittedAtMs: Math.floor(Date.now()),
   };
 
   if (!db) {
@@ -1374,13 +1378,22 @@ function submitStudentFeedback() {
     return;
   }
   db
-    .collection('dashboardFeedback')
+    .collection('sessions')
+    .doc(code)
+    .collection('sessionFeedback')
     .add(payload)
     .then(function () {
       closeStudentFeedbackModal();
       showToast('Thanks — your feedback was sent.');
     })
     .catch(function (e) {
+      var errCode = e && (e.code || e.name);
+      if (errCode === 'permission-denied' || errCode === 'firestore/permission-denied') {
+        showToast(
+          'Could not send feedback: Firestore blocked the write. Deploy firestore.rules (sessions/{id}/sessionFeedback) to your Firebase project, then try again.',
+        );
+        return;
+      }
       showToast('Could not send feedback: ' + (e && e.message ? e.message : String(e)));
     });
 }

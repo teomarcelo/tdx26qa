@@ -8,7 +8,7 @@ All notable changes to this project are documented here. Newest first.
 
 ### Added
 
-- **Student sidebar:** **Session** details are **above** **Session stats**; footer with short copy + envelope control opens **Dashboard feedback** (subject + body). Submits an **anonymous** Firestore row on **`dashboardFeedback`** (see **`firestore.rules`**); no mail client and no reply path.
+- **Student sidebar:** **Session** details are **above** **Session stats**; footer with short copy + envelope control opens **Dashboard feedback** (subject + body). Submits an **anonymous** Firestore doc under **`sessions/{code}/sessionFeedback`**; instructors see it in **Student feedback** (see **`firestore.rules`**). No mail client and no reply path.
 
 ### Changed
 

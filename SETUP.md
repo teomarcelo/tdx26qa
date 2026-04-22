@@ -102,7 +102,7 @@ Questions are loaded with `orderBy('createdAt', 'desc')` and a page size of **10
 
 ### Student dashboard feedback
 
-Students can submit **subject** + **body** from the sidebar footer. The app writes an **anonymous** row to **`dashboardFeedback`** in Firestore (session code + timestamps only — no student email, no mail app). Deploy **`firestore.rules`** from this repo. Review submissions in the Firebase console under **Firestore → `dashboardFeedback`** (or export). To get messages in an inbox, use a scheduled export, BigQuery, or a small **Cloud Function** + email provider (not included in this static app).
+Students can submit **subject** + **body** from the sidebar footer. The app writes an **anonymous** document under **`sessions/{sessionCode}/sessionFeedback`** (subject, body, client timestamp — no student email, no mail app). Instructors see the same stream in the sidebar **Student feedback** section when that session is selected. Deploy **`firestore.rules`** from this repo or writes return **permission denied**. Older data may still exist under the retired top-level **`dashboardFeedback`** collection; migrate manually if needed. To get messages in an inbox, use a scheduled export, BigQuery, or a small **Cloud Function** + email provider (not included in this static app).
 
 ### Question fields (status badges)
 

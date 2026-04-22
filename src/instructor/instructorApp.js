@@ -150,7 +150,7 @@ function tryRestoreInstructorActiveSessionFromList() {
 
 let db, storage = null, activeSessionCode = null, allQuestions = [];
 let currentFilter = 'all', currentSort = 'recent';
-let deleteTargetId = null, unsubQuestions = null, unsubSession = null;
+let deleteTargetId = null, unsubQuestions = null, unsubSession = null, unsubSessionFeedback = null;
 let allSessions = [], currentInstructor = null, isDemoMode = false;
 /** After first Firestore merge for "My sessions" (avoids treating pre-load as an empty list). */
 let instructorSessionsHydrated = false;
@@ -226,8 +226,59 @@ function genCode() {
   return code;
 }
 
+const INSTR_SECTION_COLLAPSE_LS = 'sqa_instructor_section_collapsed_v1';
+/** Sidebar accordion section ids — expand/collapse remembered across hard refresh. */
+const INSTR_SECTION_IDS = [
+  'sec-sessions',
+  'sec-session',
+  'sec-session-feedback',
+  'sec-stats',
+  'sec-filters',
+  'sec-session-sidebar',
+];
+
+function readInstrSectionCollapseOverrides() {
+  try {
+    const raw = localStorage.getItem(INSTR_SECTION_COLLAPSE_LS);
+    if (!raw) return {};
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== 'object') return {};
+    const out = {};
+    INSTR_SECTION_IDS.forEach((sid) => {
+      if (Object.prototype.hasOwnProperty.call(o, sid) && typeof o[sid] === 'boolean') {
+        out[sid] = o[sid];
+      }
+    });
+    return out;
+  } catch (e) {
+    return {};
+  }
+}
+
+function persistInstrSectionCollapseOverrides(overrides) {
+  try {
+    localStorage.setItem(INSTR_SECTION_COLLAPSE_LS, JSON.stringify(overrides));
+  } catch (e2) {}
+}
+
+function applyInstrSectionCollapseFromStorage() {
+  const state = readInstrSectionCollapseOverrides();
+  INSTR_SECTION_IDS.forEach((sid) => {
+    if (!Object.prototype.hasOwnProperty.call(state, sid)) return;
+    const el = document.getElementById(sid);
+    if (!el) return;
+    el.classList.toggle('collapsed', !!state[sid]);
+  });
+}
+
 function toggleSection(id) {
-  document.getElementById(id).classList.toggle('collapsed');
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  if (!INSTR_SECTION_IDS.includes(id)) return;
+  const state = readInstrSectionCollapseOverrides();
+  state[id] = el.classList.contains('collapsed');
+  persistInstrSectionCollapseOverrides(state);
 }
 
 function addInstructor() {
@@ -385,6 +436,7 @@ function instructorLogout() {
   hasMoreOlder = false;
   instructorOlderBeyondLoadExhausted = false;
   if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+  detachSessionFeedbackListener();
   if (unsubSession) { unsubSession(); unsubSession = null; }
   // reset UI
   document.getElementById('student-demo-panel').style.display = 'none';
@@ -441,6 +493,7 @@ function showDashboard() {
   const dashSearch = document.getElementById('instr-questions-search');
   if (dashSearch) dashSearch.value = '';
   if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+  detachSessionFeedbackListener();
   document.getElementById('session-dependent-sections').style.display = 'none';
   const nameEl = document.getElementById('instructor-name-bar');
   if (nameEl) nameEl.textContent = currentInstructor || 'Instructor';
@@ -492,8 +545,10 @@ function loadDemoSessions() {
     syncActiveCodeBadge();
     document.getElementById('session-dependent-sections').style.display = 'block';
     persistInstructorActiveSession(DEMO_SESSION_CODE);
+    wireSessionFeedbackForCode(DEMO_SESSION_CODE);
   } else {
     if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+    detachSessionFeedbackListener();
     activeSessionCode = null;
     questionPages = [];
     currentQuestionPage = 0;
@@ -617,8 +672,9 @@ function sessionNoteLinkRowTemplate(url = '', label = '') {
 function buildSessionNoteLinkSectionHtml(note) {
   const links = Array.isArray(note.links) ? note.links.filter(l => l && String(l.url || '').trim()) : [];
   const rows = links.length ? links.map(l => sessionNoteLinkRowTemplate(l.url || '', l.label || '')).join('') : '';
+  const labelHidden = links.length ? '' : ' is-hidden';
   return `<div class="form-field sn-links-field">
-    <label>Named links (https only)</label>
+    <label class="sn-links-label${labelHidden}">Named links (https only)</label>
     <div class="sn-links-rows">${rows}</div>
     <button type="button" class="add-btn sn-add-link-row-btn">+ Add link</button>
   </div>`;
@@ -1189,6 +1245,7 @@ function hideSessionFromList(sessionCode, ev) {
     clearTimeout(instructorStatsAggTimer);
     instructorStatsAggTimer = null;
     if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+    detachSessionFeedbackListener();
     activeSessionCode = null;
     const iqSearch = document.getElementById('instr-questions-search');
     if (iqSearch) iqSearch.value = '';
@@ -1232,6 +1289,84 @@ function hideSessionFromList(sessionCode, ev) {
   }).then(finishHide).catch(e => showToast('Could not update list: ' + (e.message || e)));
 }
 
+function detachSessionFeedbackListener() {
+  if (unsubSessionFeedback) {
+    unsubSessionFeedback();
+    unsubSessionFeedback = null;
+  }
+}
+
+function formatInstrFeedbackWhen(ms) {
+  if (ms == null || ms === '' || typeof ms !== 'number') return '';
+  try {
+    return new Date(ms).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch (e) {
+    return '';
+  }
+}
+
+/** Live list of anonymous student dashboard feedback for the active session. */
+function renderInstrSessionFeedback(rows, opts) {
+  const wrap = document.getElementById('instr-session-feedback-list');
+  if (!wrap) return;
+  const demo = opts && opts.demo;
+  if (!rows || !rows.length) {
+    wrap.innerHTML = demo
+      ? '<p class="instr-feedback-empty">Feedback is not stored in demo mode.</p>'
+      : '<p class="instr-feedback-empty">No student feedback for this session yet.</p>';
+    return;
+  }
+  wrap.innerHTML = rows
+    .map((r) => {
+      const sub = esc(String(r.subject || ''));
+      const bodyRaw = String(r.body || '');
+      const body = esc(bodyRaw).replace(/\n/g, '<br>');
+      const when = esc(formatInstrFeedbackWhen(r.submittedAtMs));
+      return `<article class="instr-feedback-card">
+        <div class="instr-feedback-card-head"><strong>${sub}</strong><span class="instr-feedback-when">${when}</span></div>
+        <div class="instr-feedback-body">${body}</div>
+      </article>`;
+    })
+    .join('');
+}
+
+function wireSessionFeedbackForCode(code) {
+  detachSessionFeedbackListener();
+  const wrap = document.getElementById('instr-session-feedback-list');
+  if (!wrap) return;
+  if (isDemoMode || !code || !db) {
+    renderInstrSessionFeedback([], { demo: isDemoMode });
+    return;
+  }
+  renderInstrSessionFeedback([], { demo: false });
+  unsubSessionFeedback = db
+    .collection('sessions')
+    .doc(code)
+    .collection('sessionFeedback')
+    .onSnapshot(
+      (snap) => {
+        if (code !== activeSessionCode) return;
+        const rows = [];
+        snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+        rows.sort((a, b) => (b.submittedAtMs || 0) - (a.submittedAtMs || 0));
+        renderInstrSessionFeedback(rows, { demo: false });
+      },
+      (err) => {
+        console.warn('Session feedback listener:', err);
+        if (code === activeSessionCode && wrap) {
+          wrap.innerHTML =
+            '<p class="instr-feedback-empty instr-feedback-empty--warn">Could not load feedback. Deploy updated firestore.rules and try again.</p>';
+        }
+      },
+    );
+}
+
 function selectSession(code) {
   activeSessionCode = code;
   instructorSessionStatsSerial++;
@@ -1246,6 +1381,7 @@ function selectSession(code) {
   if (s) fillSessionForm(s);
 
   if (unsubQuestions) { unsubQuestions(); unsubQuestions = null; }
+  detachSessionFeedbackListener();
   questionPages = [];
   currentQuestionPage = 0;
   hasMoreOlder = false;
@@ -1266,6 +1402,7 @@ function selectSession(code) {
     renderQuestions();
     updateStats();
     updateInstructorPaginationUi();
+    wireSessionFeedbackForCode(code);
     return;
   }
 
@@ -1288,6 +1425,7 @@ function selectSession(code) {
         updateInstructorPaginationUi();
       }
     });
+  wireSessionFeedbackForCode(code);
   updateInstructorPaginationUi();
   runInstructorAggregateStatsRefresh();
 }
@@ -2762,6 +2900,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSessionTimezoneSelects();
   initFmtEmojiPickerLayout();
   fillFmtEmojiPickerGrids();
+  applyInstrSectionCollapseFromStorage();
   initInstructorSidebarResizer();
   document.getElementById('signin-pin').addEventListener('keydown', e => { if (e.key==='Enter') instructorLogin(); });
   document.getElementById('reg-pin2').addEventListener('keydown', e => { if (e.key==='Enter') instructorRegister(); });
@@ -2825,13 +2964,22 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         rowsWrap.insertAdjacentHTML('beforeend', sessionNoteLinkRowTemplate());
+        const linkLabel = card.querySelector('.sn-links-label');
+        if (linkLabel) linkLabel.classList.remove('is-hidden');
         return;
       }
       const rmLink = e.target.closest && e.target.closest('.sn-link-remove-btn');
       if (rmLink) {
         e.preventDefault();
         const row = rmLink.closest('.sn-link-row');
+        const card = row && row.closest('.session-note-edit-card');
         if (row) row.remove();
+        if (card) {
+          const rowsWrap = card.querySelector('.sn-links-rows');
+          const linkLabel = card.querySelector('.sn-links-label');
+          const left = rowsWrap && rowsWrap.querySelectorAll('.sn-link-row').length;
+          if (linkLabel && !left) linkLabel.classList.add('is-hidden');
+        }
         return;
       }
       const fmtBtn = e.target.closest('.format-toolbar[data-fmt-target] .fmt-btn[data-fmt]');

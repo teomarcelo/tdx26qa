@@ -10,22 +10,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Anonymous student feedback (Firestore only — no email addresses stored; host reviews in console / export)
-    match /dashboardFeedback/{docId} {
-      allow read: if false;
-      allow create: if request.resource.data.keys().hasOnly(['subject', 'body', 'sessionCode', 'submittedAtMs'])
-        && request.resource.data.subject is string
-        && request.resource.data.body is string
-        && request.resource.data.sessionCode is string
-        && request.resource.data.submittedAtMs is int
-        && request.resource.data.subject.size() > 0
-        && request.resource.data.subject.size() <= 500
-        && request.resource.data.body.size() > 0
-        && request.resource.data.body.size() <= 12000
-        && request.resource.data.sessionCode.size() <= 40;
-      allow update, delete: if false;
-    }
-
     // Sessions (instructor creates/updates session info) and questions
     match /sessions/{sessionId} {
       allow read: if true;
@@ -38,6 +22,28 @@ service cloud.firestore {
         allow update: if resource.data.authorId == request.resource.data.authorId;
         // Instructors delete from the dashboard; without Firebase Auth this cannot be restricted to “only instructors”.
         allow delete: if true;
+      }
+      // Anonymous student dashboard feedback per session (path implies session; no email stored).
+      match /sessionFeedback/{docId} {
+        allow read: if true;
+        allow create: if request.resource.data.keys().hasAll(['subject', 'body', 'submittedAtMs'])
+          && request.resource.data.size() == 3
+          && request.resource.data.subject is string
+          && request.resource.data.body is string
+          && (
+            request.resource.data.submittedAtMs is int
+            || (
+              request.resource.data.submittedAtMs is float
+              && int(request.resource.data.submittedAtMs) == request.resource.data.submittedAtMs
+            )
+          )
+          && request.resource.data.submittedAtMs >= 946684800000
+          && request.resource.data.submittedAtMs <= 4102444800000
+          && request.resource.data.subject.size() > 0
+          && request.resource.data.subject.size() <= 500
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 12000;
+        allow update, delete: if false;
       }
     }
   }

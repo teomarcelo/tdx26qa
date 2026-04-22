@@ -1,7 +1,7 @@
 /** Questions loaded per Firestore page (student + instructor). */
 export const QUESTIONS_PAGE_SIZE = 10;
 
-/** Optional: who should receive feedback in your process (e.g. forward from exports). Not stored on `dashboardFeedback` documents. */
+/** Optional: who should receive feedback in your process (e.g. forward from exports). Not stored on `sessionFeedback` documents. */
 export const STUDENT_FEEDBACK_TO_EMAIL = 'tmarcelo@salesforce.com';
 
 /** Student board poll interval when not using a live listener for the full list. */

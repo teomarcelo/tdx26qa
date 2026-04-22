@@ -193,9 +193,20 @@
                 <label>Survey ID (text students copy)</label>
                 <input class="mini-input" id="sf-survey-copy" type="text" placeholder="Shown under SURVEY on the student Session card." autocomplete="off">
               </div>
-              <p class="session-survey-hint">Students always see <strong>OrgClaim</strong> on the Session card; if OrgClaim code is empty, <strong>OrgClaim Code:</strong> is shown with nothing after it. <strong>SURVEY</strong> stays off without a Survey ID and an <strong>https</strong> survey link. Leave the OrgClaim link blank to save <code>http://sfdc.co/OrgClaim</code> when you add a code. Tap <strong>Save session info</strong> after edits.</p>
               <button class="save-btn" onclick="saveSession()">Save session info</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Student dashboard feedback (Firestore: sessions/{code}/sessionFeedback) -->
+        <div class="side-section" id="sec-session-feedback">
+          <div class="side-section-header" onclick="toggleSection('sec-session-feedback')">
+            <span class="side-label">Student feedback</span>
+            <span class="side-chevron">▾</span>
+          </div>
+          <div class="side-section-body">
+            <p class="instr-feedback-lead">Anonymous notes from the student sidebar (newest first).</p>
+            <div id="instr-session-feedback-list" class="instr-feedback-list-wrap" aria-live="polite"></div>
           </div>
         </div>
 
@@ -432,7 +443,6 @@
         <label>Survey ID (text students copy)</label>
         <input class="mini-input" id="new-sf-survey-copy" type="text" placeholder="Shown under SURVEY on the student Session card." autocomplete="off">
       </div>
-      <p class="session-survey-hint">Students always see <strong>OrgClaim</strong> on the Session card; if OrgClaim code is empty, <strong>OrgClaim Code:</strong> is shown with nothing after it. <strong>SURVEY</strong> stays off without a Survey ID and an <strong>https</strong> survey link. Leave the OrgClaim link blank to save <code>http://sfdc.co/OrgClaim</code> when you add a code.</p>
     </div>
     <p class="error-msg" id="create-session-error" style="font-size:0.82rem;color:var(--warn);min-height:1.2rem;margin-bottom:0.5rem;"></p>
     <div class="modal-footer">
