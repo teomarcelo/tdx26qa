@@ -17,6 +17,8 @@ All notable changes to this project are documented here. Newest first.
 - **Instructor notes:** single **Instructor notes** pill on the filter row (after **Most votes**); toggles the main feed between Q&A and notes only (no **custom-named** link list — plain https links still show as hostname/path so the control stays available for link-only cards).
 - **Instructor notes visibility:** toggle stays in sync with Firestore even when the notes list node is missing on first paint; **https links** count as visible note content again.
 - **Toolbar:** solid-blue “active” styling applies only to **All / Pinned / Unanswered / Answered** (`data-filter`); **Most votes** stays outlined when on, so it never reads as a second filled chip next to a status filter.
+- **Instructor notes toggle:** `sessionNotes: []` again merges **legacy** `sessionNoteTitle` / `Body` / images when present so the pill is not stuck hidden; **http://** links count for visibility (student list shows them as text; only **https** is clickable).
+- **Instructor notes visibility:** title/body treat **HTML / `&nbsp;`** as empty when there is no real text, so rich-but-empty notes do not fake “has content”; non-**https** image URLs still open via a text link on the student card.
 - **Sort:** **Most recent** control removed; **Most votes** is one toggle on the same row as All / Pinned / Unanswered / Answered (off = newest first). **Top pagination** moved **below** the filter row.
 
 ### Instructor

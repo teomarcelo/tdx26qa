@@ -653,7 +653,7 @@ function collectSessionNotesFromDom() {
         url: ((row.querySelector('.sn-link-url') || {}).value || '').trim(),
         label: ((row.querySelector('.sn-link-label') || {}).value || '').trim(),
       }))
-      .filter(l => /^https:\/\//i.test(l.url))
+      .filter(l => /^https?:\/\//i.test(l.url))
       .slice(0, SESSION_NOTE_LINKS_MAX);
     const editorCollapsed = card.classList.contains('sn-card-collapsed');
     return { id, order: idx, title: title.trim(), body: body.trim(), imageUrls, links, show, editorCollapsed };

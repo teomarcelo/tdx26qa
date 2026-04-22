@@ -405,6 +405,11 @@
     color: var(--accent);
     word-break: break-all;
   }
+  .session-note-link-http-hint {
+    font-size: 0.78em;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
 
   .questions-search-row {
     display: flex;

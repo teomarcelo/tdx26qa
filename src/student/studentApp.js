@@ -244,9 +244,14 @@ function studentHasVisibleInstructorNotes() {
 
 /** Keep the Instructor notes pill in sync with session data (even if #session-notes-list is missing). */
 function syncStudentInstructorNotesToggleVisibility(optSession) {
-  var s = typeof optSession !== 'undefined' ? optSession : currentSession;
+  var s = arguments.length === 0 ? currentSession : optSession;
   var toggleBtn = document.getElementById('student-feed-notes-toggle');
   if (!toggleBtn) return;
+  if (!s) {
+    toggleBtn.classList.add('is-hidden');
+    toggleBtn.setAttribute('aria-hidden', 'true');
+    return;
+  }
   var notes = getStudentVisibleSessionNotes(s);
   var has = notes.length > 0;
   if (has) {
@@ -544,21 +549,40 @@ function renderSessionNote(s) {
   listEl.innerHTML = notes.map(function (n) {
     var t = String(n.title || '').trim();
     var b = String(n.body || '').trim();
-    var urls = Array.isArray(n.imageUrls) ? n.imageUrls.filter(isHttpsUrl) : [];
+    var urlsAll = Array.isArray(n.imageUrls)
+      ? n.imageUrls.map(function (u) { return String(u || '').trim(); }).filter(Boolean)
+      : [];
+    var urls = urlsAll.filter(isHttpsUrl);
+    var urlsHttpOnly = urlsAll.filter(function (u) {
+      return /^http:\/\//i.test(u) && !isHttpsUrl(u);
+    });
     var titleHtml = t ? '<div class="session-note-title rich-message">' + formatRichMessage(t) + '</div>' : '';
     var bodyHtml = b ? '<div class="session-note-body rich-message">' + formatRichMessage(b) + '</div>' : '';
     var imgs = urls.map(function (u) {
       var safe = String(u).replace(/"/g, '');
       return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
     }).join('');
-    var imgBlock = imgs ? '<div class="session-note-images">' + imgs + '</div>' : '';
+    var httpImgFallback = urlsHttpOnly
+      .map(function (u) {
+        return (
+          '<div class="session-note-image-fallback">' +
+          '<a href="' +
+          esc(u) +
+          '" target="_blank" rel="noopener noreferrer">Open image link</a> <span class="session-note-link-http-hint">(https images embed above)</span></div>'
+        );
+      })
+      .join('');
+    var imgBlock =
+      imgs || httpImgFallback
+        ? '<div class="session-note-images">' + imgs + httpImgFallback + '</div>'
+        : '';
     var rawLinks = Array.isArray(n.links) ? n.links : [];
     var linkUrls = rawLinks
       .map(function (l) {
         return String((l && (l.url || l.href)) || '').trim();
       })
       .filter(function (u) {
-        return /^https:\/\//i.test(u);
+        return /^https?:\/\//i.test(u);
       });
     var linksHtml = '';
     if (linkUrls.length) {
@@ -566,7 +590,6 @@ function renderSessionNote(s) {
         '<ul class="session-note-links-plain">' +
         linkUrls
           .map(function (url) {
-            var safeHref = esc(url);
             var display = url;
             try {
               var parsed = new URL(url);
@@ -575,12 +598,19 @@ function renderSessionNote(s) {
             if (display.length > 72) {
               display = display.slice(0, 69) + '...';
             }
+            if (/^https:\/\//i.test(url)) {
+              return (
+                '<li><a href="' +
+                esc(url) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                esc(display) +
+                '</a></li>'
+              );
+            }
             return (
-              '<li><a href="' +
-              safeHref +
-              '" target="_blank" rel="noopener noreferrer">' +
+              '<li class="session-note-link-http">' +
               esc(display) +
-              '</a></li>'
+              ' <span class="session-note-link-http-hint">(use https for a clickable link)</span></li>'
             );
           })
           .join('') +
@@ -1247,6 +1277,7 @@ function setFilter(f, btn) {
   if (btn) btn.classList.add('active');
   renderQuestions();
   syncStudentSortVotesButton();
+  syncStudentInstructorNotesToggleVisibility();
 }
 
 function syncStudentSortVotesButton() {
