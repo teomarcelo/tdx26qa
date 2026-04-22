@@ -4,7 +4,38 @@ All notable changes to this project are documented here. Newest first.
 
 ---
 
+## 2026-04-23
+
+### Added
+
+- **`src/lib/answeredBadge.js`:** Status badges for answered questions. Optional Firestore boolean **`answeredVerbally`** on `sessions/{code}/questions/{id}` is set when the instructor uses **Answered verbally**; it is cleared when marking **pending** (or when the last answer is removed and the thread returns to pending). If a host marks verbally and later posts a written (or image) answer, students and instructors can see **both** an **Answered verbally** pill and an **Answered** pill. Older data without the flag still shows one verbal-style pill when the thread is answered with no in-app reply text or images.
+
+### Changed
+
+- **Instructor card actions:** **Answered verbally** and **Mark pending** are always **two buttons** (not toggled in one slot). Order: **Save answer** → **Answered verbally** → **Pin** → **Mark pending** → **Delete** (Mark pending sits left of Delete).
+- **Student + instructor sidebar resizer:** Strip is **8px** wide with **`overflow: hidden`** / min-max width so it stays a thin divider. The **chevron** on the strip was removed to avoid layout flicker; **double-click** the strip toggles hide/show (keyboard on the focused separator unchanged). `title` / `aria-label` mention double-click.
+- **“Answered verbally” badge styling:** **Teal** background/text (`.badge-answered-verbal`); green **Answered** unchanged. Removed the inset **box-shadow** that read as an extra border.
+- **Instructor demo sample:** One answered question includes **`answeredVerbally: true`** plus text so the dual-badge case is visible in demo mode.
+
+---
+
+## 2026-04-18
+
+### Added
+
+- **Multiple session sidebar notes:** Instructors can add several independent “Important” messages (title, body with formatting toolbar, image URLs, per-note visibility). **Drag the handle (⠿)** to reorder before saving. Stored as `sessionNotes` on `sessions/{code}` (capped at 15). Students see each note as its own card in session order. **Legacy** single `sessionNoteTitle` / `sessionNoteBody` / `sessionNoteImageUrls` still works when `sessionNotes` is absent. Shared helpers in **`src/lib/sessionNotes.js`**.
+- **Named links** on each session note: optional **https** URL plus optional **display name**; students get a compact link list under the message (still capped per note in **`sessionNotes.js`**).
+- **Student layout:** Session sidebar is **resizable** (drag the strip between feed and sidebar), **collapsible** via the **chevron** control, width persisted in **`localStorage`**. Below **768px** the layout stacks and the resizer is hidden. The strip shows subtle **‹ ›** hints for drag direction.
+- **Instructor layout:** Left **My sessions** sidebar matches the same **drag / chevron / keyboard** resize and collapse behavior (persisted separately; hidden below **900px**).
+- **Instructor session notes:** Each note card can be **collapsed** (▼) to save space; **+ Add note** collapses all existing cards and opens the new one expanded.
+
+---
+
 ## 2026-04-22
+
+### Fixed
+
+- **Firebase Storage CORS:** **`storage-cors.json`** now allows **Vite** dev origins **`http://localhost:5173`** / **`http://127.0.0.1:5173`** and **`vite preview`** **`:4173`** (uploads were blocked when only older ports like `:8765` were listed). You must still run **`gsutil cors set storage-cors.json gs://YOUR_BUCKET`** after editing. Student image upload errors that look like CORS/network now point at SETUP.
 
 ### Changed
 

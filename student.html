@@ -58,7 +58,7 @@
     </div>
   </div>
 
-  <div class="app-layout">
+  <div class="app-layout" id="student-app-layout">
     <!-- Main column -->
     <div class="main-col">
       <!-- Ask box -->
@@ -66,21 +66,23 @@
         <div class="ask-box-header">Ask a question</div>
         <div class="format-toolbar" role="toolbar" aria-label="Insert formatting">
           <span class="format-toolbar-label">Format</span>
-          <button type="button" class="fmt-btn fmt-btn-b" title="Bold (*text*)" aria-label="Bold" onclick="insertSlackFormat('q-text','bold')"><strong>B</strong></button>
-          <button type="button" class="fmt-btn fmt-btn-i" title="Italic (_text_)" aria-label="Italic" onclick="insertSlackFormat('q-text','italic')"><em>I</em></button>
-          <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough (~text~)" aria-label="Strikethrough" onclick="insertSlackFormat('q-text','strike')"><span style="text-decoration:line-through;">S</span></button>
-          <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code (`text`)" aria-label="Inline code" onclick="insertSlackFormat('q-text','code')">`</button>
-          <button type="button" class="fmt-btn fmt-btn-mono" title="Code block (triple backticks)" aria-label="Code block" onclick="insertSlackFormat('q-text','fenced')">{ }</button>
-          <span class="fmt-sep" aria-hidden="true"></span>
-          <button type="button" class="fmt-btn fmt-emoji" title="Thumbs up" aria-label="Insert thumbs up" onclick="insertEmoji('q-text','👍')">👍</button>
-          <button type="button" class="fmt-btn fmt-emoji" title="Clap" aria-label="Insert clap" onclick="insertEmoji('q-text','👏')">👏</button>
-          <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('q-text','✅')">✅</button>
-          <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('q-text','💡')">💡</button>
-          <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('q-text','❓')">❓</button>
-          <details class="fmt-emoji-more" id="q-text-emoji-more">
-            <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
-            <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="q-text" role="group" aria-label="More emojis"></div>
-          </details>
+          <div class="format-toolbar-rail">
+            <button type="button" class="fmt-btn fmt-btn-b" title="Bold (*text*)" aria-label="Bold" onclick="insertSlackFormat('q-text','bold')"><strong>B</strong></button>
+            <button type="button" class="fmt-btn fmt-btn-i" title="Italic (_text_)" aria-label="Italic" onclick="insertSlackFormat('q-text','italic')"><em>I</em></button>
+            <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough (~text~)" aria-label="Strikethrough" onclick="insertSlackFormat('q-text','strike')"><span style="text-decoration:line-through;">S</span></button>
+            <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code (`text`)" aria-label="Inline code" onclick="insertSlackFormat('q-text','code')">`</button>
+            <button type="button" class="fmt-btn fmt-btn-mono" title="Code block (triple backticks)" aria-label="Code block" onclick="insertSlackFormat('q-text','fenced')">{ }</button>
+            <span class="fmt-sep" aria-hidden="true"></span>
+            <button type="button" class="fmt-btn fmt-emoji" title="Thumbs up" aria-label="Insert thumbs up" onclick="insertEmoji('q-text','👍')">👍</button>
+            <button type="button" class="fmt-btn fmt-emoji" title="Clap" aria-label="Insert clap" onclick="insertEmoji('q-text','👏')">👏</button>
+            <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('q-text','✅')">✅</button>
+            <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('q-text','💡')">💡</button>
+            <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('q-text','❓')">❓</button>
+            <details class="fmt-emoji-more" id="q-text-emoji-more">
+              <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+              <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="q-text" role="group" aria-label="More emojis"></div>
+            </details>
+          </div>
         </div>
         <textarea id="q-text" placeholder="What's on your mind? Ask anything about the session..." rows="3"></textarea>
         <div id="q-image-previews" class="paste-preview-row" aria-live="polite"></div>
@@ -102,11 +104,16 @@
         <button type="button" class="load-more-btn" onclick="clearStudentSearch()">Clear</button>
         <button type="button" class="refresh-btn refresh-btn--compact" id="refresh-now-btn" onclick="studentRefreshNow()" title="Fetch the latest questions now">Refresh</button>
       </div>
-      <div id="filter-bar" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
-        <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
-        <button class="filter-btn" data-filter="pinned" onclick="setFilter('pinned',this)">Pinned</button>
-        <button class="filter-btn" data-filter="unanswered" onclick="setFilter('unanswered',this)">Unanswered</button>
-        <button class="filter-btn" data-filter="answered" onclick="setFilter('answered',this)">Answered</button>
+      <div class="student-q-toolbar" id="student-q-toolbar" aria-label="Filter and sort questions">
+        <div class="student-q-toolbar-btns">
+          <button type="button" class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
+          <button type="button" class="filter-btn" data-filter="pinned" onclick="setFilter('pinned',this)">Pinned</button>
+          <button type="button" class="filter-btn" data-filter="unanswered" onclick="setFilter('unanswered',this)">Unanswered</button>
+          <button type="button" class="filter-btn" data-filter="answered" onclick="setFilter('answered',this)">Answered</button>
+          <span class="student-q-toolbar-sep" aria-hidden="true"></span>
+          <button type="button" class="filter-btn active" data-sort="recent" onclick="setSort('recent',this)">Most recent</button>
+          <button type="button" class="filter-btn" data-sort="votes" onclick="setSort('votes',this)">Most votes</button>
+        </div>
       </div>
       <div id="questions-list">
         <div class="empty-state">
@@ -117,18 +124,21 @@
       <div id="student-pagination-bottom" class="q-pagination-num-wrap" aria-label="Question pages"></div>
     </div>
 
+    <div
+      class="student-sidebar-resizer"
+      id="student-sidebar-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize session sidebar. Double-click to hide or show."
+      title="Drag left or right to resize. Double-click to hide or show the sidebar."
+    >
+      <div class="student-sidebar-resizer-track" id="student-sidebar-resizer-track" aria-hidden="true"></div>
+    </div>
+
     <!-- Sidebar: controls + session (main feed stays left) -->
-    <div class="side-col">
-      <div class="side-section">
-        <div class="side-title">Sort by</div>
-        <div class="filter-btns">
-          <button class="filter-btn active" onclick="setSort('recent',this)">Most recent</button>
-          <button class="filter-btn" onclick="setSort('votes',this)">Most votes</button>
-        </div>
-      </div>
+    <div class="side-col" id="student-side-col">
       <div class="side-section">
         <div class="side-title">Session stats</div>
-        <p class="stat-scope-hint" id="stat-scope-hint" role="note"></p>
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-num" id="stat-total">0</div>
@@ -152,10 +162,6 @@
         <div class="side-title">Session</div>
         <div class="session-card" id="session-info-card">
           <div class="session-card-title" id="si-title">Loading...</div>
-          <div class="session-meta" id="si-instructor" style="display:none;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span id="si-instructor-text"></span>
-          </div>
           <div class="session-meta" id="si-datetime">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <span id="si-datetime-text">—</span>
@@ -167,9 +173,7 @@
           <div class="session-card-desc" id="si-desc"></div>
           <div id="session-note-wrap" class="session-note-wrap" style="display:none;" aria-live="polite">
             <div class="session-note-label">Important</div>
-            <div class="session-note-title" id="session-note-title"></div>
-            <div class="session-note-body" id="session-note-body"></div>
-            <div class="session-note-images" id="session-note-images"></div>
+            <div id="session-notes-list" class="session-notes-list"></div>
           </div>
         </div>
       </div>
@@ -183,21 +187,23 @@
     <div class="modal-title">Edit your question</div>
     <div class="format-toolbar" role="toolbar" aria-label="Insert formatting">
       <span class="format-toolbar-label">Format</span>
-      <button type="button" class="fmt-btn fmt-btn-b" title="Bold (*text*)" aria-label="Bold" onclick="insertSlackFormat('edit-text','bold')"><strong>B</strong></button>
-      <button type="button" class="fmt-btn fmt-btn-i" title="Italic (_text_)" aria-label="Italic" onclick="insertSlackFormat('edit-text','italic')"><em>I</em></button>
-      <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough (~text~)" aria-label="Strikethrough" onclick="insertSlackFormat('edit-text','strike')"><span style="text-decoration:line-through;">S</span></button>
-      <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code (`text`)" aria-label="Inline code" onclick="insertSlackFormat('edit-text','code')">`</button>
-      <button type="button" class="fmt-btn fmt-btn-mono" title="Code block (triple backticks)" aria-label="Code block" onclick="insertSlackFormat('edit-text','fenced')">{ }</button>
-      <span class="fmt-sep" aria-hidden="true"></span>
-      <button type="button" class="fmt-btn fmt-emoji" title="Thumbs up" aria-label="Insert thumbs up" onclick="insertEmoji('edit-text','👍')">👍</button>
-      <button type="button" class="fmt-btn fmt-emoji" title="Clap" aria-label="Insert clap" onclick="insertEmoji('edit-text','👏')">👏</button>
-      <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('edit-text','✅')">✅</button>
-      <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('edit-text','💡')">💡</button>
-      <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('edit-text','❓')">❓</button>
-      <details class="fmt-emoji-more" id="edit-text-emoji-more">
-        <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
-        <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="edit-text" role="group" aria-label="More emojis"></div>
-      </details>
+      <div class="format-toolbar-rail">
+        <button type="button" class="fmt-btn fmt-btn-b" title="Bold (*text*)" aria-label="Bold" onclick="insertSlackFormat('edit-text','bold')"><strong>B</strong></button>
+        <button type="button" class="fmt-btn fmt-btn-i" title="Italic (_text_)" aria-label="Italic" onclick="insertSlackFormat('edit-text','italic')"><em>I</em></button>
+        <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough (~text~)" aria-label="Strikethrough" onclick="insertSlackFormat('edit-text','strike')"><span style="text-decoration:line-through;">S</span></button>
+        <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code (`text`)" aria-label="Inline code" onclick="insertSlackFormat('edit-text','code')">`</button>
+        <button type="button" class="fmt-btn fmt-btn-mono" title="Code block (triple backticks)" aria-label="Code block" onclick="insertSlackFormat('edit-text','fenced')">{ }</button>
+        <span class="fmt-sep" aria-hidden="true"></span>
+        <button type="button" class="fmt-btn fmt-emoji" title="Thumbs up" aria-label="Insert thumbs up" onclick="insertEmoji('edit-text','👍')">👍</button>
+        <button type="button" class="fmt-btn fmt-emoji" title="Clap" aria-label="Insert clap" onclick="insertEmoji('edit-text','👏')">👏</button>
+        <button type="button" class="fmt-btn fmt-emoji" title="Check" aria-label="Insert check mark" onclick="insertEmoji('edit-text','✅')">✅</button>
+        <button type="button" class="fmt-btn fmt-emoji" title="Light bulb" aria-label="Insert light bulb" onclick="insertEmoji('edit-text','💡')">💡</button>
+        <button type="button" class="fmt-btn fmt-emoji" title="Question" aria-label="Insert question mark" onclick="insertEmoji('edit-text','❓')">❓</button>
+        <details class="fmt-emoji-more" id="edit-text-emoji-more">
+          <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+          <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="edit-text" role="group" aria-label="More emojis"></div>
+        </details>
+      </div>
     </div>
     <textarea id="edit-text" style="width:100%;min-height:100px;padding:0.75rem;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;outline:none;"></textarea>
     <div class="modal-footer">

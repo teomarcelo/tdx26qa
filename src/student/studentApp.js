@@ -11,6 +11,8 @@ import { createShowToast } from '../lib/toast.js';
 import { formatQuestionWhen } from '../lib/formatQuestionWhen.js';
 import { filterCorpusByFuseSearch } from '../lib/questionSearch.js';
 import { fetchSessionQuestionCountStats } from '../lib/sessionQuestionCounts.js';
+import { getStudentVisibleSessionNotes } from '../lib/sessionNotes.js';
+import { htmlAnsweredStatusBadges } from '../lib/answeredBadge.js';
 
 const showToast = createShowToast('toast');
 
@@ -271,18 +273,6 @@ function leaveSession() {
 
 function renderSessionInfo(s) {
   document.getElementById('si-title').textContent = s.sessionName || s.className || '';
-  var instRow = document.getElementById('si-instructor');
-  var instText = document.getElementById('si-instructor-text');
-  var fromArr = Array.isArray(s.instructors) ? s.instructors.map(function (x) { return String(x).trim(); }).filter(Boolean) : [];
-  var fromNames = (s.instructorNames || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
-  var label = fromArr.length ? fromArr.join(', ') : fromNames.join(', ');
-  if (label) {
-    instText.textContent = label;
-    instRow.style.display = '';
-  } else {
-    instText.textContent = '';
-    instRow.style.display = 'none';
-  }
   document.getElementById('si-datetime-text').textContent = [s.sessionDate, s.sessionTime].filter(Boolean).join(' · ') || '—';
   document.getElementById('si-room-text').textContent = s.room || '—';
   const desc = document.getElementById('si-desc');
@@ -293,28 +283,38 @@ function renderSessionInfo(s) {
 
 function renderSessionNote(s) {
   var wrap = document.getElementById('session-note-wrap');
-  if (!wrap) return;
-  var allowed = (s.sessionNoteShow !== false);
-  var t = (s.sessionNoteTitle || '').trim();
-  var b = (s.sessionNoteBody || '').trim();
-  var urls = Array.isArray(s.sessionNoteImageUrls) ? s.sessionNoteImageUrls.filter(isHttpsUrl) : [];
-  if (!allowed || (!t && !b && !urls.length)) {
+  var listEl = document.getElementById('session-notes-list');
+  if (!wrap || !listEl) return;
+  var notes = getStudentVisibleSessionNotes(s);
+  if (!notes.length) {
     wrap.style.display = 'none';
+    listEl.innerHTML = '';
     return;
   }
   wrap.style.display = 'block';
-  var titleEl = document.getElementById('session-note-title');
-  var bodyEl = document.getElementById('session-note-body');
-  var imgEl = document.getElementById('session-note-images');
-  titleEl.className = 'session-note-title rich-message';
-  titleEl.innerHTML = t ? formatRichMessage(t) : '';
-  titleEl.style.display = t ? '' : 'none';
-  bodyEl.className = 'session-note-body rich-message';
-  bodyEl.innerHTML = b ? formatRichMessage(b) : '';
-  bodyEl.style.display = b ? '' : 'none';
-  imgEl.innerHTML = urls.map(function (u) {
-    var safe = String(u).replace(/"/g, '');
-    return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+  listEl.innerHTML = notes.map(function (n) {
+    var t = String(n.title || '').trim();
+    var b = String(n.body || '').trim();
+    var urls = Array.isArray(n.imageUrls) ? n.imageUrls.filter(isHttpsUrl) : [];
+    var links = Array.isArray(n.links) ? n.links.filter(function (l) { return l && isHttpsUrl(l.url); }) : [];
+    var titleHtml = t ? '<div class="session-note-title rich-message">' + formatRichMessage(t) + '</div>' : '';
+    var bodyHtml = b ? '<div class="session-note-body rich-message">' + formatRichMessage(b) + '</div>' : '';
+    var linksHtml = '';
+    if (links.length) {
+      linksHtml = '<ul class="session-note-links">' + links.map(function (l) {
+        var u = String(l.url || '').trim();
+        var lab = String(l.label || '').trim();
+        var href = esc(u);
+        var text = lab ? esc(lab) : esc(u);
+        return '<li class="session-note-link-item"><a href="' + href + '" target="_blank" rel="noopener noreferrer">' + text + '</a></li>';
+      }).join('') + '</ul>';
+    }
+    var imgs = urls.map(function (u) {
+      var safe = String(u).replace(/"/g, '');
+      return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer"><img src="' + safe + '" alt="" loading="lazy" referrerpolicy="no-referrer"></a>';
+    }).join('');
+    var imgBlock = imgs ? '<div class="session-note-images">' + imgs + '</div>' : '';
+    return '<div class="session-note-card">' + titleHtml + bodyHtml + linksHtml + imgBlock + '</div>';
   }).join('');
 }
 
@@ -634,6 +634,16 @@ function extractImageUrlForQuestionPaste(e, hasFiles) {
   return extractImageSrcFromHtmlPaste(e) || extractImageSrcFromUriListPaste(e) || extractImageSrcFromPlainPaste(e);
 }
 
+function formatStudentImageUploadError(err) {
+  var m = (err && err.message) ? String(err.message) : '';
+  var code = (err && err.code) ? String(err.code) : '';
+  var blob = (m + ' ' + code).toLowerCase();
+  if (blob.indexOf('cors') >= 0 || blob.indexOf('network') >= 0 || blob.indexOf('preflight') >= 0 || blob.indexOf('xmlhttprequest') >= 0) {
+    return 'Image upload blocked (browser ↔ Storage). Apply storage-cors.json to your bucket with this origin (e.g. http://localhost:5173) — SETUP.md step “CORS”.';
+  }
+  return 'Upload failed: ' + (m || 'check Storage rules in SETUP.md');
+}
+
 function uploadStudentQuestionImage(jpegBlob) {
   if (!storage || !sessionCode) return Promise.reject(new Error('no storage'));
   var path = 'sessions/' + sessionCode + '/question_paste/' + userId + '_' + Date.now() + '_' + genId() + '.jpg';
@@ -729,7 +739,7 @@ function onQuestionTextPaste(e) {
             pendingQuestionImages.splice(idx2, 1);
           }
           renderQuestionImagePreviews();
-          showToast('Upload failed: ' + (err && err.message ? err.message : 'check Storage rules in SETUP.md'));
+          showToast(formatStudentImageUploadError(err));
         }
       }
       return;
@@ -927,7 +937,7 @@ function setFilter(f, btn) {
 
 function setSort(s, btn) {
   currentSort = s;
-  document.querySelectorAll('#app-screen .side-col .filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('[data-sort]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderQuestions();
 }
@@ -962,7 +972,7 @@ function renderQuestions() {
     const voting = !!studentUpvoteLocks[q.id];
     const badges = [];
     if (q.pinned) badges.push('<span class="q-badge badge-pinned">Pinned</span>');
-    if (q.status === 'answered') badges.push('<span class="q-badge badge-answered">Answered</span>');
+    if (q.status === 'answered') badges.push(htmlAnsweredStatusBadges(q));
     else badges.push('<span class="q-badge badge-pending">Pending</span>');
     return `
     <div class="q-card ${q.pinned?'pinned':''} ${q.status==='answered'?'answered':''}">
@@ -1001,16 +1011,6 @@ function renderQuestions() {
   }).join('');
 }
 
-function setStudentStatHintAggregatesOk() {
-  var el = document.getElementById('stat-scope-hint');
-  if (el) el.textContent = 'Session-wide totals for this whole class (from Firestore). The list below still loads in pages (newest first).';
-}
-
-function setStudentStatHintFallback() {
-  var el = document.getElementById('stat-scope-hint');
-  if (el) el.textContent = 'Could not load session-wide totals. Showing counts from posts loaded in this browser only.';
-}
-
 function applyStudentStatCardsFromCache(qs) {
   document.getElementById('stat-total').textContent = qs.length;
   document.getElementById('stat-answered').textContent = qs.filter(function (q) { return q.status === 'answered'; }).length;
@@ -1023,8 +1023,6 @@ function updateStats() {
   updateQuestionPaginationUi();
   if (!db || !sessionCode) {
     applyStudentStatCardsFromCache(qs);
-    var h = document.getElementById('stat-scope-hint');
-    if (h) h.textContent = qs.length ? 'Connect to Firebase to load session-wide totals.' : '';
     return;
   }
   const serialAtStart = studentSessionStatsSerial;
@@ -1035,12 +1033,10 @@ function updateStats() {
       document.getElementById('stat-answered').textContent = String(stats.answered);
       document.getElementById('stat-pending').textContent = String(stats.pending);
       document.getElementById('stat-pinned').textContent = String(stats.pinned);
-      setStudentStatHintAggregatesOk();
     })
     .catch(function () {
       if (serialAtStart !== studentSessionStatsSerial) return;
       applyStudentStatCardsFromCache(qs);
-      setStudentStatHintFallback();
     });
 }
 
@@ -1373,6 +1369,236 @@ function closeFmtEmojiDetails(detailsId) {
   if (d) d.open = false;
 }
 
+var STUDENT_SIDEBAR_LS_W = 'sqa_student_sidebar_px';
+var STUDENT_SIDEBAR_LS_COLLAPSED = 'sqa_student_sidebar_collapsed';
+var STUDENT_SIDEBAR_MIN = 240;
+var STUDENT_SIDEBAR_DEFAULT = 320;
+var studentSidebarDrag = null;
+
+function studentSidebarIsStacked() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
+}
+
+function getStudentSidebarMaxPx() {
+  var vw = typeof window.innerWidth === 'number' ? window.innerWidth : 1024;
+  return Math.max(STUDENT_SIDEBAR_MIN, Math.min(560, Math.floor(vw * 0.48)));
+}
+
+function clampStudentSidebarW(w) {
+  return Math.max(STUDENT_SIDEBAR_MIN, Math.min(getStudentSidebarMaxPx(), Math.round(Number(w) || STUDENT_SIDEBAR_DEFAULT)));
+}
+
+function readStudentSidebarCollapsed() {
+  try {
+    return localStorage.getItem(STUDENT_SIDEBAR_LS_COLLAPSED) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function readStudentSidebarWidthPx() {
+  try {
+    var v = localStorage.getItem(STUDENT_SIDEBAR_LS_W);
+    if (v != null && v !== '') return clampStudentSidebarW(parseInt(v, 10));
+  } catch (e2) {}
+  return STUDENT_SIDEBAR_DEFAULT;
+}
+
+function persistStudentSidebarState(collapsed, w) {
+  try {
+    if (collapsed) {
+      localStorage.setItem(STUDENT_SIDEBAR_LS_COLLAPSED, '1');
+    } else {
+      localStorage.removeItem(STUDENT_SIDEBAR_LS_COLLAPSED);
+      localStorage.setItem(STUDENT_SIDEBAR_LS_W, String(clampStudentSidebarW(w)));
+    }
+  } catch (e) {}
+}
+
+function updateStudentSidebarResizerAria(layout, currentW, maxPx) {
+  var el = document.getElementById('student-sidebar-resizer');
+  if (!el) return;
+  var collapsed = layout && layout.classList.contains('app-layout--sidebar-collapsed');
+  var maxV = maxPx != null ? maxPx : getStudentSidebarMaxPx();
+  el.setAttribute('aria-valuenow', String(collapsed ? 0 : currentW));
+  el.setAttribute('aria-valuemin', String(collapsed ? 0 : STUDENT_SIDEBAR_MIN));
+  el.setAttribute('aria-valuemax', String(maxV));
+  el.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function applyStudentSidebarToDom() {
+  var layout = document.getElementById('student-app-layout');
+  var resizer = document.getElementById('student-sidebar-resizer');
+  if (!layout) return;
+  var maxPx = getStudentSidebarMaxPx();
+  if (studentSidebarIsStacked()) {
+    layout.classList.remove('app-layout--sidebar-collapsed');
+    layout.style.removeProperty('--student-sidebar-px');
+    if (resizer) {
+      resizer.setAttribute('aria-hidden', 'true');
+      resizer.setAttribute('tabindex', '-1');
+    }
+    return;
+  }
+  if (resizer) {
+    resizer.removeAttribute('aria-hidden');
+    resizer.setAttribute('tabindex', '0');
+  }
+  var collapsed = readStudentSidebarCollapsed();
+  var w = clampStudentSidebarW(readStudentSidebarWidthPx());
+  layout.classList.toggle('app-layout--sidebar-collapsed', collapsed);
+  if (collapsed) {
+    layout.style.setProperty('--student-sidebar-px', '0px');
+  } else {
+    layout.style.setProperty('--student-sidebar-px', w + 'px');
+  }
+  updateStudentSidebarResizerAria(layout, collapsed ? 0 : w, maxPx);
+}
+
+function toggleStudentSidebarFromArrow() {
+  if (studentSidebarIsStacked()) return;
+  var layout = document.getElementById('student-app-layout');
+  if (!layout) return;
+  var collapsed = layout.classList.contains('app-layout--sidebar-collapsed');
+  if (collapsed) {
+    var w = readStudentSidebarWidthPx();
+    persistStudentSidebarState(false, w);
+  } else {
+    var curStr = layout.style.getPropertyValue('--student-sidebar-px');
+    var cur = parseInt(curStr, 10);
+    if (!isFinite(cur) || cur <= 0) cur = readStudentSidebarWidthPx();
+    cur = clampStudentSidebarW(cur);
+    try {
+      localStorage.setItem(STUDENT_SIDEBAR_LS_W, String(cur));
+    } catch (e) {}
+    try {
+      localStorage.setItem(STUDENT_SIDEBAR_LS_COLLAPSED, '1');
+    } catch (e2) {}
+  }
+  applyStudentSidebarToDom();
+}
+
+function initStudentSidebarResizer() {
+  var layout = document.getElementById('student-app-layout');
+  var track = document.getElementById('student-sidebar-resizer-track');
+  var resizer = document.getElementById('student-sidebar-resizer');
+  if (!layout || !track || !resizer) return;
+  if (track.dataset.sidebarInit === '1') return;
+  track.dataset.sidebarInit = '1';
+
+  function endDrag(ev) {
+    if (!studentSidebarDrag) return;
+    var pid = studentSidebarDrag.pointerId;
+    var lastW = studentSidebarDrag.lastW;
+    studentSidebarDrag = null;
+    document.body.classList.remove('student-sidebar-is-resizing');
+    try {
+      if (track.releasePointerCapture && pid != null) track.releasePointerCapture(pid);
+    } catch (e) {}
+    persistStudentSidebarState(false, lastW);
+    applyStudentSidebarToDom();
+  }
+
+  track.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    if (studentSidebarIsStacked()) return;
+    e.preventDefault();
+    var side = document.getElementById('student-side-col');
+    var startW;
+    if (layout.classList.contains('app-layout--sidebar-collapsed')) {
+      startW = clampStudentSidebarW(readStudentSidebarWidthPx());
+      layout.classList.remove('app-layout--sidebar-collapsed');
+      try {
+        localStorage.removeItem(STUDENT_SIDEBAR_LS_COLLAPSED);
+      } catch (err) {}
+      layout.style.setProperty('--student-sidebar-px', startW + 'px');
+    } else {
+      var rw = side && side.getBoundingClientRect ? side.getBoundingClientRect().width : 0;
+      startW = clampStudentSidebarW(rw > 40 ? rw : readStudentSidebarWidthPx());
+    }
+    studentSidebarDrag = { startX: e.clientX, startW: startW, lastW: startW, pointerId: e.pointerId };
+    document.body.classList.add('student-sidebar-is-resizing');
+    try {
+      track.setPointerCapture(e.pointerId);
+    } catch (e2) {}
+  });
+
+  track.addEventListener('pointermove', function (e) {
+    if (!studentSidebarDrag) return;
+    var dx = studentSidebarDrag.startX - e.clientX;
+    var nw = clampStudentSidebarW(studentSidebarDrag.startW + dx);
+    studentSidebarDrag.lastW = nw;
+    layout.classList.remove('app-layout--sidebar-collapsed');
+    try {
+      localStorage.removeItem(STUDENT_SIDEBAR_LS_COLLAPSED);
+    } catch (e3) {}
+    layout.style.setProperty('--student-sidebar-px', nw + 'px');
+    updateStudentSidebarResizerAria(layout, nw, getStudentSidebarMaxPx());
+  });
+
+  track.addEventListener('pointerup', endDrag);
+  track.addEventListener('pointercancel', endDrag);
+
+  resizer.addEventListener('dblclick', function (e) {
+    if (studentSidebarIsStacked()) return;
+    if (studentSidebarDrag) return;
+    e.preventDefault();
+    toggleStudentSidebarFromArrow();
+  });
+
+  resizer.addEventListener('keydown', function (e) {
+    if (studentSidebarIsStacked()) return;
+    var maxPx = getStudentSidebarMaxPx();
+    var curStr = layout.style.getPropertyValue('--student-sidebar-px');
+    var cur = layout.classList.contains('app-layout--sidebar-collapsed') ? STUDENT_SIDEBAR_MIN : parseInt(curStr, 10);
+    if (!isFinite(cur) || cur <= 0) cur = readStudentSidebarWidthPx();
+    cur = clampStudentSidebarW(cur);
+    var step = 24;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (layout.classList.contains('app-layout--sidebar-collapsed')) return;
+      var nwL = clampStudentSidebarW(cur + step);
+      layout.style.setProperty('--student-sidebar-px', nwL + 'px');
+      persistStudentSidebarState(false, nwL);
+      applyStudentSidebarToDom();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (layout.classList.contains('app-layout--sidebar-collapsed')) return;
+      var nwR = clampStudentSidebarW(cur - step);
+      layout.style.setProperty('--student-sidebar-px', nwR + 'px');
+      persistStudentSidebarState(false, nwR);
+      applyStudentSidebarToDom();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      if (!layout.classList.contains('app-layout--sidebar-collapsed')) {
+        layout.style.setProperty('--student-sidebar-px', maxPx + 'px');
+        persistStudentSidebarState(false, maxPx);
+        applyStudentSidebarToDom();
+      }
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (!layout.classList.contains('app-layout--sidebar-collapsed')) {
+        layout.style.setProperty('--student-sidebar-px', STUDENT_SIDEBAR_MIN + 'px');
+        persistStudentSidebarState(false, STUDENT_SIDEBAR_MIN);
+        applyStudentSidebarToDom();
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleStudentSidebarFromArrow();
+    }
+  });
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      applyStudentSidebarToDom();
+    }, 120);
+  });
+
+  applyStudentSidebarToDom();
+}
+
 // Enter key on code input
 document.addEventListener('DOMContentLoaded', () => {
   initFmtEmojiPickerLayout();
@@ -1450,6 +1676,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key !== 'Escape') return;
     document.querySelectorAll('details.fmt-emoji-more[open]').forEach(function (d) { d.open = false; });
   });
+  initStudentSidebarResizer();
 });
 
 Object.assign(globalThis, {

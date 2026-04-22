@@ -118,9 +118,9 @@
     </div>
   </div>
 
-  <div class="app-body">
+  <div class="app-body" id="instr-app-body">
     <!-- Side panel -->
-    <div class="side-panel">
+    <div class="side-panel" id="instr-side-panel">
 
       <!-- Sessions — FIRST, always visible -->
       <div class="side-section" id="sec-sessions">
@@ -148,7 +148,6 @@
             <span class="side-chevron">▾</span>
           </div>
           <div class="side-section-body">
-            <p class="stat-scope-hint" id="instr-stat-scope-hint" role="note"></p>
             <div class="stats-grid">
               <div class="stat-tile"><div class="stat-num" id="stat-total">0</div><div class="stat-lbl">Total</div></div>
               <div class="stat-tile"><div class="stat-num" id="stat-answered" style="color:var(--success)">0</div><div class="stat-lbl">Answered</div></div>
@@ -210,60 +209,24 @@
               </div>
               <button class="save-btn" onclick="saveSession()">Save session info</button>
             </div>
-            <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
-              <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Session sidebar (students)</div>
-              <p style="font-size:0.75rem;color:var(--text-light);margin-bottom:0.65rem;line-height:1.45;">Shows under <strong>Session</strong> on the student board. Slack-style: <code style="font-size:0.85em;">*bold*</code>, <code>_italic_</code>, <code>~strike~</code>, <code>`code`</code>, fenced blocks, emojis, links. Image URLs one per line.</p>
-              <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;margin-bottom:0.65rem;cursor:pointer;user-select:none;">
-                <input type="checkbox" id="session-note-show" style="width:16px;height:16px;accent-color:var(--accent);"> Show on student sidebar
-              </label>
-              <div class="form-field">
-                <label>Title (optional)</label>
-                <input class="mini-input" id="session-note-title-input" type="text" placeholder="e.g. WiFi, slides, parking">
-              </div>
-              <div class="form-field">
-                <label>Message</label>
-                <div class="format-toolbar format-toolbar--compact" role="toolbar" aria-label="Insert formatting">
-                  <span class="format-toolbar-label">Format</span>
-                  <button type="button" class="fmt-btn fmt-btn-b" title="Bold" aria-label="Bold" onclick="insertSlackFormat('session-note-body-input','bold')"><strong>B</strong></button>
-                  <button type="button" class="fmt-btn fmt-btn-i" title="Italic" aria-label="Italic" onclick="insertSlackFormat('session-note-body-input','italic')"><em>I</em></button>
-                  <button type="button" class="fmt-btn fmt-btn-s" title="Strikethrough" aria-label="Strikethrough" onclick="insertSlackFormat('session-note-body-input','strike')"><span style="text-decoration:line-through;">S</span></button>
-                  <button type="button" class="fmt-btn fmt-btn-mono" title="Inline code" aria-label="Inline code" onclick="insertSlackFormat('session-note-body-input','code')">`</button>
-                  <button type="button" class="fmt-btn fmt-btn-mono" title="Code block" aria-label="Code block" onclick="insertSlackFormat('session-note-body-input','fenced')">{ }</button>
-                  <span class="fmt-sep" aria-hidden="true"></span>
-                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','👍')">👍</button>
-                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','✅')">✅</button>
-                  <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('session-note-body-input','💡')">💡</button>
-                  <details class="fmt-emoji-more" id="session-note-emoji-more">
-                    <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
-                    <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="session-note-body-input" role="group" aria-label="More emojis"></div>
-                  </details>
-                </div>
-                <textarea class="mini-input mini-textarea" id="session-note-body-input" placeholder="Links, dial-in, anything students should keep handy…"></textarea>
-              </div>
-              <div class="form-field">
-                <label>Image URLs (https, one per line)</label>
-                <textarea class="mini-input mini-textarea" id="session-note-urls-input" style="min-height:56px;" placeholder="https://…"></textarea>
-              </div>
-              <button class="save-btn" style="background:var(--accent);" onclick="saveSessionNote()">Save session note</button>
-            </div>
           </div>
         </div>
 
-        <!-- Instructors -->
-        <div class="side-section collapsed" id="sec-instructors">
-          <div class="side-section-header" onclick="toggleSection('sec-instructors')">
-            <span class="side-label">Instructors</span>
+        <!-- Important (student Session panel) — separate from session metadata -->
+        <div class="side-section" id="sec-session-sidebar">
+          <div class="side-section-header" onclick="toggleSection('sec-session-sidebar')">
+            <span class="side-label">Important</span>
             <span class="side-chevron">▾</span>
           </div>
           <div class="side-section-body">
-            <div class="instructor-list" id="instructor-list">
-              <div style="font-size:0.82rem;color:var(--text-light);text-align:center;padding:0.5rem">No instructors added yet</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;margin-bottom:0.65rem;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="session-note-show" style="width:16px;height:16px;accent-color:var(--accent);"> Display on student sidebar
+            </label>
+            <div id="session-notes-editor-host">
+              <div id="session-notes-editor" class="session-notes-editor" aria-label="Important notes for students"></div>
             </div>
-            <div class="instructor-add-row">
-              <input class="mini-input" id="new-instructor-input" type="text" placeholder="Instructor name" onkeydown="if(event.key==='Enter')addInstructor()">
-              <button class="add-btn" onclick="addInstructor()">+ Add</button>
-            </div>
-            <p style="font-size:0.75rem;color:var(--text-light);margin-top:0.5rem;line-height:1.4;">Names shown on the student board under session info.</p>
+            <button type="button" class="add-btn sn-add-note-btn" style="margin-top:0.5rem;width:100%;" onclick="addSessionNoteCard()">+ Add note</button>
+            <button class="save-btn" style="background:var(--accent);margin-top:0.65rem;" onclick="saveSessionNote()">Save session notes</button>
           </div>
         </div>
 
@@ -271,8 +234,19 @@
 
     </div>
 
+    <div
+      class="instr-sidebar-resizer"
+      id="instr-sidebar-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize instructor sidebar. Double-click to hide or show."
+      title="Drag left or right to resize. Double-click to hide or show the sidebar."
+    >
+      <div class="instr-sidebar-resizer-track" id="instr-sidebar-resizer-track" aria-hidden="true"></div>
+    </div>
+
     <!-- Main panel -->
-    <div class="main-panel">
+    <div class="main-panel" id="instr-main-panel">
       <div id="instr-questions-chrome" class="instr-questions-chrome" aria-hidden="true">
         <div class="panel-header">
           <div class="panel-title" id="panel-title">Questions</div>
@@ -326,18 +300,21 @@
     <div style="background:#fff;border-bottom:1px solid #e2ddd6;padding:.9rem 1.25rem;flex-shrink:0;">
       <div style="font-weight:500;font-size:.85rem;margin-bottom:.45rem;">Ask a question</div>
       <div class="format-toolbar format-toolbar--compact" role="toolbar" aria-label="Insert formatting" style="margin-bottom:.45rem;">
-        <button type="button" class="fmt-btn fmt-btn-b" title="Bold" onclick="insertSlackFormat('sdemo-q-text','bold')"><strong>B</strong></button>
-        <button type="button" class="fmt-btn fmt-btn-i" title="Italic" onclick="insertSlackFormat('sdemo-q-text','italic')"><em>I</em></button>
-        <button type="button" class="fmt-btn fmt-btn-s" title="Strike" onclick="insertSlackFormat('sdemo-q-text','strike')"><span style="text-decoration:line-through;">S</span></button>
-        <button type="button" class="fmt-btn fmt-btn-mono" title="Code" onclick="insertSlackFormat('sdemo-q-text','code')">`</button>
-        <button type="button" class="fmt-btn fmt-btn-mono" title="Block" onclick="insertSlackFormat('sdemo-q-text','fenced')">{ }</button>
-        <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','👍')">👍</button>
-        <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','✅')">✅</button>
-        <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','💡')">💡</button>
-        <details class="fmt-emoji-more">
-          <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
-          <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="sdemo-q-text" role="group" aria-label="More emojis"></div>
-        </details>
+        <span class="format-toolbar-label">Format</span>
+        <div class="format-toolbar-rail">
+          <button type="button" class="fmt-btn fmt-btn-b" title="Bold" onclick="insertSlackFormat('sdemo-q-text','bold')"><strong>B</strong></button>
+          <button type="button" class="fmt-btn fmt-btn-i" title="Italic" onclick="insertSlackFormat('sdemo-q-text','italic')"><em>I</em></button>
+          <button type="button" class="fmt-btn fmt-btn-s" title="Strike" onclick="insertSlackFormat('sdemo-q-text','strike')"><span style="text-decoration:line-through;">S</span></button>
+          <button type="button" class="fmt-btn fmt-btn-mono" title="Code" onclick="insertSlackFormat('sdemo-q-text','code')">`</button>
+          <button type="button" class="fmt-btn fmt-btn-mono" title="Block" onclick="insertSlackFormat('sdemo-q-text','fenced')">{ }</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','👍')">👍</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','✅')">✅</button>
+          <button type="button" class="fmt-btn fmt-emoji" onclick="insertEmoji('sdemo-q-text','💡')">💡</button>
+          <details class="fmt-emoji-more">
+            <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
+            <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="sdemo-q-text" role="group" aria-label="More emojis"></div>
+          </details>
+        </div>
       </div>
       <textarea id="sdemo-q-text" placeholder="What's on your mind?" style="width:100%;border:1.5px solid #e2ddd6;border-radius:8px;padding:.6rem .8rem;font-family:inherit;font-size:.85rem;resize:none;height:70px;background:#f7f6f3;color:#1a1814;outline:none;" onfocus="this.style.borderColor='#0070d2';this.style.background='#fff'" onblur="this.style.borderColor='#e2ddd6';this.style.background='#f7f6f3'"></textarea>
       <div style="display:flex;gap:.6rem;margin-top:.5rem;">

@@ -74,18 +74,26 @@ service cloud.firestore {
 > motivated user could delete questions or change data unless you add **Firebase Authentication**
 > and tighten rules (e.g. only signed-in instructors may `delete` or update session docs).
 
-### Session sidebar note (“Important” for students)
+### Session sidebar notes (“Important” for students)
 
 Optional fields on the same `sessions/{code}` document:
 
-- `sessionNoteShow` (boolean — default visible if omitted)
-- `sessionNoteTitle` (string)
-- `sessionNoteBody` (string — Slack-style formatting; rendered client-side)
-- `sessionNoteImageUrls` (array of `https://` image URLs, one per line in the UI)
+- `sessionNoteShow` (boolean — when `false`, the whole Important block is hidden for students)
+- `sessionNotes` (array, max **15** — preferred): each item `{ id, order, title, body, imageUrls[], links[], show }`. Order is the display order; `show: false` hides that card only. Title, body, image URLs, and **named links** are independent per note. Each link is `{ url, label? }` with `https://` URLs only (max **12** links per note). Slack-style body text is rendered client-side; `imageUrls` must be `https://` only.
+
+Legacy single-note fields (still read if `sessionNotes` is missing or empty):
+
+- `sessionNoteTitle`, `sessionNoteBody`, `sessionNoteImageUrls` (same semantics as one note)
 
 ### Question pagination
 
 Questions are loaded with `orderBy('createdAt', 'desc')` and a page size of **25**. If Firebase asks you to create an **index** the first time you run a session with questions, follow the link in the error dialog and create it.
+
+### Question fields (status badges)
+
+No rule change is required for this UI-only flag:
+
+- **`answeredVerbally`** (optional boolean on each question document): set to **`true`** when the instructor clicks **Answered verbally**; cleared to **`false`** when they click **Mark pending** or when the last saved answer is removed and the question returns to **pending**. Saving a written answer does **not** clear it, so the board can show **both** “Answered verbally” and “Answered” when applicable. Existing sessions without this field still behave sensibly (verbal-only answered rows infer one verbal-style badge).
 
 ### Firebase Storage (paste screenshots)
 
@@ -110,9 +118,30 @@ Tighten these rules (auth, App Check, smaller size) before a fully public launch
 
 Browsers enforce **CORS** on your Firebase Storage bucket. If the console shows errors when **uploading** or **fetching** images from `http://127.0.0.1:…` or `http://localhost:…`, apply a CORS policy to the bucket.
 
-1. Install [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) so you have `gsutil`.
+1. Install the **Google Cloud SDK** so you have **`gsutil`** (it is not part of Node or Firebase CLI alone).
+
+   **macOS (Homebrew)** — in Terminal:
+
+   ```bash
+   brew install --cask google-cloud-sdk
+   ```
+
+   Then start a **new** terminal tab, or load the SDK into your shell (path may differ slightly by Homebrew version):
+
+   ```bash
+   source "$(brew --prefix)/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/path.zsh.inc"
+   ```
+
+   If that file is missing, run the **`install.sh`** the `brew` output mentions, or follow the “Next steps” printed after the cask install.
+
+   Confirm: `gsutil version`. First time, run `gcloud auth login` and pick the Google account that owns the Firebase project.
+
+   **No local install?** Open [Google Cloud Shell](https://shell.cloud.google.com/) in the browser (has `gsutil` already). Upload **`storage-cors.json`** there (or paste it with the editor), `cd` to that folder, and run the `gsutil cors set …` command below. Use the same bucket name as in Firebase.
+
+   Other platforms: [Cloud SDK install](https://cloud.google.com/sdk/docs/install).
+
 2. In Firebase Console → **Project settings** → note your **Storage bucket** (e.g. `tdx-qa.firebasestorage.app` or `your-project.appspot.com`).
-3. Edit **`storage-cors.json`** in this repo: add your dev URLs (with the correct **port**) and your production site URL (e.g. `https://your-app.netlify.app`).
+3. Edit **`storage-cors.json`** in this repo: it includes **Vite** dev defaults (`http://localhost:5173`, `http://127.0.0.1:5173`) and **`vite preview`** (`:4173`). Add any other dev ports you use and your **production** origin (e.g. `https://your-app.netlify.app`) — Storage CORS is **exact-origin** (scheme + host + port).
 4. Run (replace `YOUR_BUCKET` with the bucket name from step 2):
 
 ```bash

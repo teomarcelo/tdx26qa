@@ -7,6 +7,8 @@ import { createShowToast } from '../lib/toast.js';
 import { formatQuestionWhen } from '../lib/formatQuestionWhen.js';
 import { filterCorpusByFuseSearch } from '../lib/questionSearch.js';
 import { fetchSessionQuestionCountStats } from '../lib/sessionQuestionCounts.js';
+import { getSessionNotesFromDoc, SESSION_SIDEBAR_NOTES_MAX, SESSION_NOTE_LINKS_MAX } from '../lib/sessionNotes.js';
+import { htmlAnsweredStatusBadges } from '../lib/answeredBadge.js';
 
 const showToast = createShowToast('toast');
 function copyRichCodeBlockInstr(btn) {
@@ -147,6 +149,8 @@ let instructorSessionStatsSerial = 0;
 let instructorStatsAggTimer = null;
 const answerDrafts = {};
 const pendingAnswerImages = {};
+/** Working copy for the Important notes editor (reordered in UI, saved on “Save session notes”). */
+let sessionNotesDraft = [];
 
 const DEMO_SESSION_CODE = 'SQA-DEMO';
 const DEMO_SESSION = {
@@ -160,14 +164,15 @@ const DEMO_SESSION = {
   room: 'Hall D — Room 214',
   description: 'Intro to Agentforce: architecture, agent types, and how to build your first autonomous agent without code.',
   sessionNoteShow: true,
-  sessionNoteTitle: 'Quick links',
-  sessionNoteBody: 'Example: https://trailhead.salesforce.com — appears under Session for students.',
-  sessionNoteImageUrls: []
+  sessionNotes: [
+    { id: 'demo-sn1', order: 0, title: 'Quick links', body: 'Example: https://trailhead.salesforce.com — appears under Session for students.', imageUrls: [], links: [{ url: 'https://trailhead.salesforce.com', label: 'Trailhead' }], show: true },
+    { id: 'demo-sn2', order: 1, title: 'Wi‑Fi', body: 'Network: `Conference-Guest`', imageUrls: [], links: [], show: true },
+  ],
 };
 const DEMO_QUESTIONS_TEMPLATE = [
   { id:'dq1', pinned:true,  status:'pending',  authorName:'Maria S.',  authorEmail:'maria@trailblazer.io', authorId:'u1', votes:7,  voters:[], answer:'',
     text:'Can Agentforce agents trigger flows mid-conversation, or does the flow have to be invoked at the start of the action?' },
-  { id:'dq2', pinned:false, status:'answered', authorName:'James K.',  authorEmail:'james@company.com',    authorId:'u2', votes:4,  voters:[], answer:"Great question! Agent Actions are the atomic steps an agent can take — think of them as the agent's toolkit. Flows are one type of action the agent can call.",
+  { id:'dq2', pinned:false, status:'answered', answeredVerbally: true, authorName:'James K.',  authorEmail:'james@company.com',    authorId:'u2', votes:4,  voters:[], answer:"Great question! Agent Actions are the atomic steps an agent can take — think of them as the agent's toolkit. Flows are one type of action the agent can call.",
     text:"What's the difference between an Agent Action and a Flow in this context? They seem to overlap." },
   { id:'dq3', pinned:false, status:'answered', authorName:'Anonymous', authorEmail:'',                     authorId:'u3', votes:2,  voters:[], answer:"Currently the limit is 50 topics per agent in the Spring '26 release.",
     text:'Is there a limit on how many topics a single agent can handle?' },
@@ -200,6 +205,7 @@ function toggleSection(id) {
 
 function addInstructor() {
   const input = document.getElementById('new-instructor-input');
+  if (!input) return;
   const name = input.value.trim();
   if (!name) return;
   if (!activeSessionCode) { showToast('Select a session first.'); return; }
@@ -361,14 +367,15 @@ function instructorLogout() {
   document.getElementById('sessions-list').innerHTML = '';
   document.getElementById('questions-list').innerHTML = instructorCompactSelectSessionHtml();
   updateInstructorPaginationUi();
-  document.getElementById('instructor-list').innerHTML = '<div style="font-size:0.82rem;color:var(--text-light);text-align:center;padding:0.5rem">No instructors added yet</div>';
+  const instrListEl = document.getElementById('instructor-list');
+  if (instrListEl) {
+    instrListEl.innerHTML = '<div style="font-size:0.82rem;color:var(--text-light);text-align:center;padding:0.5rem">No instructors added yet</div>';
+  }
   document.getElementById('instructor-name-bar').textContent = '';
   // reset stats
   ['stat-total','stat-answered','stat-pending','stat-pinned','fc-all','fc-pinned','fc-pending','fc-answered'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '0';
   });
-  const scopeHint = document.getElementById('instr-stat-scope-hint');
-  if (scopeHint) scopeHint.textContent = '';
   document.documentElement.classList.remove('instr-restoring-session');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
@@ -473,8 +480,6 @@ function loadDemoSessions() {
       const hel = document.getElementById(id);
       if (hel) hel.textContent = '0';
     });
-    const hintClear = document.getElementById('instr-stat-scope-hint');
-    if (hintClear) hintClear.textContent = '';
     updateInstructorPaginationUi();
     renderSessionsList();
     persistInstructorActiveSession(null);
@@ -487,9 +492,8 @@ function fillSessionForm(s) {
   document.getElementById('sf-room').value = s.room || '';
   document.getElementById('sf-desc').value = s.description || '';
   document.getElementById('session-note-show').checked = (s.sessionNoteShow !== false);
-  document.getElementById('session-note-title-input').value = s.sessionNoteTitle || '';
-  document.getElementById('session-note-body-input').value = s.sessionNoteBody || '';
-  document.getElementById('session-note-urls-input').value = Array.isArray(s.sessionNoteImageUrls) ? s.sessionNoteImageUrls.join('\n') : '';
+  refreshSessionNotesDraftFromSession(s);
+  renderSessionNotesEditor();
   // date/time — convert display back to input format if possible
   if (s.sessionDate) {
     try {
@@ -507,6 +511,180 @@ function fillSessionForm(s) {
 function parseBulletinUrls(raw) {
   if (!raw || !String(raw).trim()) return [];
   return String(raw).split(/\r?\n/).map(l => l.trim()).filter(u => /^https:\/\//i.test(u));
+}
+
+function newSessionNoteId() {
+  return 'sn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+}
+
+function sessionNoteDomKey(id, idx) {
+  const base = String(id || 'n').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return String(idx) + '_' + base.slice(0, 40);
+}
+
+function refreshSessionNotesDraftFromSession(s) {
+  const arr = getSessionNotesFromDoc(s);
+  sessionNotesDraft = arr.map((n, i) => ({
+    ...n,
+    imageUrls: [...(n.imageUrls || [])],
+    links: (n.links || []).map(l => ({ url: l.url, label: l.label || '' })),
+    editorCollapsed: arr.length > 1 ? i !== arr.length - 1 : false,
+  }));
+}
+
+function stripSessionNoteUiFields(n) {
+  const { editorCollapsed, ...rest } = n;
+  return rest;
+}
+
+function filterPersistableSessionNotes(notes) {
+  return notes
+    .filter(n =>
+      String(n.title || '').trim() ||
+      String(n.body || '').trim() ||
+      (Array.isArray(n.imageUrls) && n.imageUrls.length) ||
+      (Array.isArray(n.links) && n.links.length)
+    )
+    .map((n, i) => ({ ...n, order: i }));
+}
+
+function sessionNoteLinkRowTemplate(url = '', label = '') {
+  return `<div class="sn-link-row">
+    <input class="mini-input sn-link-url" type="url" inputmode="url" placeholder="https://…" value="${esc(url)}">
+    <input class="mini-input sn-link-label" type="text" placeholder="Display name (optional)" value="${esc(label)}">
+    <button type="button" class="sn-link-remove-btn" title="Remove link" aria-label="Remove link">✕</button>
+  </div>`;
+}
+
+function buildSessionNoteLinkSectionHtml(note) {
+  const links = Array.isArray(note.links) ? note.links.filter(l => l && String(l.url || '').trim()) : [];
+  const rows = links.length ? links.map(l => sessionNoteLinkRowTemplate(l.url || '', l.label || '')).join('') : '';
+  return `<div class="form-field sn-links-field">
+    <label>Named links (https only)</label>
+    <div class="sn-links-rows">${rows}</div>
+    <button type="button" class="add-btn sn-add-link-row-btn">+ Add link</button>
+  </div>`;
+}
+
+function buildSessionNoteEditorCardHtml(note, idx) {
+  const domKey = sessionNoteDomKey(note.id, idx);
+  const titleId = 'sn-title-' + domKey;
+  const bodyId = 'sn-body-' + domKey;
+  const showChecked = note.show !== false ? ' checked' : '';
+  const collapsed = !!note.editorCollapsed;
+  const collapsedClass = collapsed ? ' sn-card-collapsed' : '';
+  const previewRaw = String(note.title || '').trim();
+  const preview = previewRaw || 'Untitled note';
+  const ariaExp = collapsed ? 'false' : 'true';
+  return `<div class="session-note-edit-card${collapsedClass}" data-note-id="${escFmtAttr(note.id)}" draggable="false">
+    <div class="session-note-edit-card-head">
+      <span class="sn-drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder notes">⠿</span>
+      <button type="button" class="sn-card-toggle" data-sn-collapse="${escFmtAttr(note.id)}" title="Expand or collapse this note" aria-expanded="${ariaExp}" aria-label="Expand or collapse note editor">
+        <svg class="sn-card-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <span class="sn-card-preview">${esc(preview)}</span>
+      <label class="sn-show-label"><input type="checkbox" class="sn-show"${showChecked}> Show</label>
+      <button type="button" class="sn-remove-btn" data-sn-remove="${escFmtAttr(note.id)}">Remove</button>
+    </div>
+    <div class="sn-card-body">
+      <div class="form-field">
+        <label>Title (optional)</label>
+        <input class="mini-input sn-title-input" type="text" id="${titleId}" value="${esc(note.title || '')}" placeholder="e.g. Wi‑Fi, slides">
+      </div>
+      <div class="form-field">
+        <label>Message</label>
+        ${instructorFormatToolbarHtml(bodyId)}
+        <textarea class="mini-input mini-textarea sn-body-input" id="${bodyId}" placeholder="Links, dial-in…">${esc(note.body || '')}</textarea>
+      </div>
+      ${buildSessionNoteLinkSectionHtml(note)}
+    </div>
+  </div>`;
+}
+
+function renderSessionNotesEditor() {
+  const root = document.getElementById('session-notes-editor');
+  if (!root) return;
+  if (!sessionNotesDraft.length) {
+    root.innerHTML = '<p class="sn-empty-hint">No notes yet. Use <strong>+ Add note</strong>, then save.</p>';
+    return;
+  }
+  root.innerHTML = sessionNotesDraft.map((n, i) => buildSessionNoteEditorCardHtml(n, i)).join('');
+  fillFmtEmojiPickerGrids();
+}
+
+function collectSessionNotesFromDom() {
+  const root = document.getElementById('session-notes-editor');
+  if (!root) return [];
+  const cards = Array.from(root.querySelectorAll('.session-note-edit-card[data-note-id]'));
+  return cards.map((card, idx) => {
+    const id = card.getAttribute('data-note-id');
+    const title = (card.querySelector('.sn-title-input') || {}).value ?? '';
+    const body = (card.querySelector('.sn-body-input') || {}).value ?? '';
+    const draftRow = sessionNotesDraft.find(n => n.id === id);
+    const imageUrls = draftRow && Array.isArray(draftRow.imageUrls) ? [...draftRow.imageUrls] : [];
+    const showEl = card.querySelector('.sn-show');
+    const show = showEl ? !!showEl.checked : true;
+    const linkRows = Array.from(card.querySelectorAll('.sn-link-row'));
+    const links = linkRows
+      .map(row => ({
+        url: ((row.querySelector('.sn-link-url') || {}).value || '').trim(),
+        label: ((row.querySelector('.sn-link-label') || {}).value || '').trim(),
+      }))
+      .filter(l => /^https:\/\//i.test(l.url))
+      .slice(0, SESSION_NOTE_LINKS_MAX);
+    const editorCollapsed = card.classList.contains('sn-card-collapsed');
+    return { id, order: idx, title: title.trim(), body: body.trim(), imageUrls, links, show, editorCollapsed };
+  });
+}
+
+function reorderSessionNotesDraft(fromId, toId) {
+  if (!fromId || !toId || fromId === toId) return;
+  const arr = sessionNotesDraft;
+  let iFrom = arr.findIndex(n => n.id === fromId);
+  let iTo = arr.findIndex(n => n.id === toId);
+  if (iFrom < 0 || iTo < 0) return;
+  const [item] = arr.splice(iFrom, 1);
+  if (iFrom < iTo) iTo--;
+  arr.splice(iTo, 0, item);
+  arr.forEach((n, i) => { n.order = i; });
+}
+
+function addSessionNoteCard() {
+  if (!activeSessionCode) { showToast('Select a session first.'); return; }
+  if (sessionNotesDraft.length >= SESSION_SIDEBAR_NOTES_MAX) {
+    showToast(`At most ${SESSION_SIDEBAR_NOTES_MAX} session notes.`);
+    return;
+  }
+  sessionNotesDraft.forEach(n => { n.editorCollapsed = true; });
+  sessionNotesDraft.push({
+    id: newSessionNoteId(),
+    order: sessionNotesDraft.length,
+    title: '',
+    body: '',
+    imageUrls: [],
+    links: [],
+    show: true,
+    editorCollapsed: false,
+  });
+  renderSessionNotesEditor();
+}
+
+function toggleSessionNoteEditorCollapse(noteId) {
+  if (!noteId) return;
+  const hit = sessionNotesDraft.find(n => n.id === noteId);
+  if (!hit) return;
+  hit.editorCollapsed = !hit.editorCollapsed;
+  renderSessionNotesEditor();
+}
+
+function removeSessionNoteCard(noteId) {
+  if (!noteId) return;
+  sessionNotesDraft = sessionNotesDraft.filter(n => n.id !== noteId);
+  sessionNotesDraft.forEach((n, i) => { n.order = i; });
+  if (sessionNotesDraft.length) {
+    sessionNotesDraft.forEach((n, i) => { n.editorCollapsed = i !== sessionNotesDraft.length - 1; });
+  }
+  renderSessionNotesEditor();
 }
 
 function rebuildAllQuestions() {
@@ -612,27 +790,55 @@ function updateInstructorPaginationUi() {
 function saveSessionNote() {
   if (!activeSessionCode) { showToast('Select a session first.'); return; }
   const sessionNoteShow = document.getElementById('session-note-show').checked;
-  const sessionNoteTitle = document.getElementById('session-note-title-input').value.trim();
-  const sessionNoteBody = document.getElementById('session-note-body-input').value.trim();
-  const sessionNoteImageUrls = parseBulletinUrls(document.getElementById('session-note-urls-input').value);
+  const rawFromDom = collectSessionNotesFromDom();
+  const persistNotes = filterPersistableSessionNotes(rawFromDom);
+  const payload = {
+    sessionNoteShow,
+    sessionNotes: persistNotes.map(stripSessionNoteUiFields),
+    sessionNoteTitle: '',
+    sessionNoteBody: '',
+    sessionNoteImageUrls: [],
+    sessionNoteUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  };
   if (isDemoMode) {
     const s = allSessions.find(x => x.id === activeSessionCode);
     if (s) {
       s.sessionNoteShow = sessionNoteShow;
-      s.sessionNoteTitle = sessionNoteTitle;
-      s.sessionNoteBody = sessionNoteBody;
-      s.sessionNoteImageUrls = sessionNoteImageUrls;
+      s.sessionNotes = persistNotes.map(stripSessionNoteUiFields);
+      s.sessionNoteTitle = '';
+      s.sessionNoteBody = '';
+      s.sessionNoteImageUrls = [];
+      sessionNotesDraft = persistNotes.map(n => ({
+        ...n,
+        imageUrls: [...(n.imageUrls || [])],
+        links: (n.links || []).map(l => ({ url: l.url, label: l.label || '' })),
+        editorCollapsed: !!n.editorCollapsed,
+      }));
+      renderSessionNotesEditor();
     }
-    showToast('Session note updated (demo).');
+    showToast('Session notes updated (demo).');
     return;
   }
-  db.collection('sessions').doc(activeSessionCode).update({
-    sessionNoteShow,
-    sessionNoteTitle,
-    sessionNoteBody,
-    sessionNoteImageUrls,
-    sessionNoteUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(() => showToast('Session note saved.')).catch(e => showToast('Error: ' + e.message));
+  db.collection('sessions').doc(activeSessionCode).update(payload)
+    .then(() => {
+      const s = allSessions.find(x => x.id === activeSessionCode);
+      if (s) {
+        s.sessionNoteShow = sessionNoteShow;
+        s.sessionNotes = persistNotes.map(stripSessionNoteUiFields);
+        s.sessionNoteTitle = '';
+        s.sessionNoteBody = '';
+        s.sessionNoteImageUrls = [];
+        sessionNotesDraft = persistNotes.map(n => ({
+          ...n,
+          imageUrls: [...(n.imageUrls || [])],
+          links: (n.links || []).map(l => ({ url: l.url, label: l.label || '' })),
+          editorCollapsed: !!n.editorCollapsed,
+        }));
+        renderSessionNotesEditor();
+      }
+      showToast('Session notes saved.');
+    })
+    .catch(e => showToast('Error: ' + e.message));
 }
 
 function goInstructorOlderPage() {
@@ -930,8 +1136,6 @@ function hideSessionFromList(sessionCode, ev) {
       const hel = document.getElementById(id);
       if (hel) hel.textContent = '0';
     });
-    const hintEl = document.getElementById('instr-stat-scope-hint');
-    if (hintEl) hintEl.textContent = '';
     updateInstructorPaginationUi();
     syncActiveCodeBadge();
     document.getElementById('session-dependent-sections').style.display = 'none';
@@ -1101,6 +1305,7 @@ function confirmCreateSession() {
     room: document.getElementById('new-sf-room').value.trim(),
     description: document.getElementById('new-sf-desc').value.trim(),
     sessionNoteShow: true,
+    sessionNotes: [],
     sessionNoteTitle: '',
     sessionNoteBody: '',
     sessionNoteImageUrls: [],
@@ -1274,7 +1479,7 @@ function renderQuestions() {
           </div>
           <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;">
             ${q.pinned?'<span class="q-badge badge-pinned">Pinned</span>':''}
-            ${q.status==='answered'?'<span class="q-badge badge-answered">Answered</span>':'<span class="q-badge badge-pending">Pending</span>'}
+            ${q.status==='answered'?htmlAnsweredStatusBadges(q):'<span class="q-badge badge-pending">Pending</span>'}
           </div>
         </div>
         <div class="q-votes">
@@ -1296,13 +1501,11 @@ function renderQuestions() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
           Save answer
         </button>
+        <button type="button" class="action-btn btn-done" onclick="setStatus('${q.id}','answered')">✅ Answered verbally</button>
         <button class="action-btn btn-pin" onclick="togglePin('${q.id}')">
           📌 ${q.pinned?'Unpin':'Pin'}
         </button>
-        ${q.status!=='answered'
-          ? `<button class="action-btn btn-done" onclick="setStatus('${q.id}','answered')">✅ Mark answered</button>`
-          : `<button class="action-btn btn-pending" onclick="setStatus('${q.id}','pending')">⏳ Mark pending</button>`
-        }
+        <button type="button" class="action-btn btn-pending" onclick="setStatus('${q.id}','pending')">⏳ Mark pending</button>
         <button class="action-btn btn-delete" onclick="openDelete('${q.id}')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
           Delete
@@ -1350,14 +1553,17 @@ function deleteAnswer(qId, index) {
   answers.splice(index, 1);
   const status = answers.length ? 'answered' : 'pending';
   if (isDemoMode) {
-    q.answers = answers; q.status = status;
+    q.answers = answers;
+    q.status = status;
+    if (status === 'pending') delete q.answeredVerbally;
     renderQuestions(); updateStats();
     showToast('Answer removed.');
     return;
   }
-  db.collection('sessions').doc(activeSessionCode).collection('questions').doc(qId).update({
-    answers, status
-  }).then(() => showToast('Answer removed.'));
+  const patch = { answers, status };
+  if (status === 'pending') patch.answeredVerbally = false;
+  db.collection('sessions').doc(activeSessionCode).collection('questions').doc(qId).update(patch)
+    .then(() => showToast('Answer removed.'));
 }
 
 function togglePin(id) {
@@ -1376,13 +1582,21 @@ function togglePin(id) {
 function setStatus(id, status) {
   if (isDemoMode) {
     const q = findInstructorQuestionById(id);
-    if (q) q.status = status;
+    if (q) {
+      q.status = status;
+      if (status === 'answered') q.answeredVerbally = true;
+      else delete q.answeredVerbally;
+    }
     renderQuestions(); updateStats();
-    showToast(status==='answered' ? 'Marked as answered.' : 'Marked as pending.');
+    showToast(status === 'answered' ? 'Marked as answered verbally.' : 'Marked as pending.');
     return;
   }
-  db.collection('sessions').doc(activeSessionCode).collection('questions').doc(id).update({ status })
-    .then(() => showToast(status==='answered' ? 'Marked as answered.' : 'Marked as pending.'));
+  const patch =
+    status === 'answered'
+      ? { status, answeredVerbally: true }
+      : { status, answeredVerbally: false };
+  db.collection('sessions').doc(activeSessionCode).collection('questions').doc(id).update(patch)
+    .then(() => showToast(status === 'answered' ? 'Marked as answered verbally.' : 'Marked as pending.'));
 }
 
 let deleteInProgress = false;
@@ -1460,16 +1674,6 @@ function applyInstructorStatAndFcFromCache(qs) {
   document.getElementById('fc-answered').textContent = qs.filter(q => q.status === 'answered').length;
 }
 
-function setInstructorStatHintAggregatesOk() {
-  const el = document.getElementById('instr-stat-scope-hint');
-  if (el) el.textContent = 'Session-wide totals for this whole class (from Firestore). The list below still loads in pages (newest first).';
-}
-
-function setInstructorStatHintFallback() {
-  const el = document.getElementById('instr-stat-scope-hint');
-  if (el) el.textContent = 'Could not load session-wide totals. Showing counts from posts loaded in this browser only.';
-}
-
 function runInstructorAggregateStatsRefresh() {
   const code = activeSessionCode;
   if (!code || !db || isDemoMode) return;
@@ -1485,13 +1689,11 @@ function runInstructorAggregateStatsRefresh() {
       document.getElementById('fc-pinned').textContent = String(stats.pinned);
       document.getElementById('fc-pending').textContent = String(stats.pending);
       document.getElementById('fc-answered').textContent = String(stats.answered);
-      setInstructorStatHintAggregatesOk();
     })
     .catch(() => {
       if (serialAtStart !== instructorSessionStatsSerial || code !== activeSessionCode) return;
       const qs = getAllCachedInstructorQuestionsForStats();
       applyInstructorStatAndFcFromCache(qs);
-      setInstructorStatHintFallback();
     });
 }
 
@@ -1510,14 +1712,10 @@ function updateStats() {
   if (studentViewOpen) sdemoRender();
   if (isDemoMode) {
     applyInstructorStatAndFcFromCache(qs);
-    const el = document.getElementById('instr-stat-scope-hint');
-    if (el) el.textContent = qs.length ? 'Demo — counts are for the built-in sample questions.' : '';
     return;
   }
   if (!activeSessionCode || !db) {
     applyInstructorStatAndFcFromCache(qs);
-    const h = document.getElementById('instr-stat-scope-hint');
-    if (h) h.textContent = '';
     return;
   }
   scheduleInstructorAggregateStatsRefresh();
@@ -1602,6 +1800,8 @@ function sdemoOpenEdit(id) {
   if (!textEl) return;
   const current = q.text;
   textEl.innerHTML = `<div class="format-toolbar format-toolbar--compact" style="margin-bottom:.35rem;">
+    <span class="format-toolbar-label">Format</span>
+    <div class="format-toolbar-rail">
     <button type="button" class="fmt-btn fmt-btn-b" title="Bold" onclick="insertSlackFormat('sdemo-edit-ta-${id}','bold')"><strong>B</strong></button>
     <button type="button" class="fmt-btn fmt-btn-i" title="Italic" onclick="insertSlackFormat('sdemo-edit-ta-${id}','italic')"><em>I</em></button>
     <button type="button" class="fmt-btn fmt-btn-s" title="Strike" onclick="insertSlackFormat('sdemo-edit-ta-${id}','strike')"><span style="text-decoration:line-through;">S</span></button>
@@ -1614,6 +1814,7 @@ function sdemoOpenEdit(id) {
       <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
       <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="sdemo-edit-ta-${id}" role="group" aria-label="More emojis"></div>
     </details>
+    </div>
   </div>
   <textarea id="sdemo-edit-ta-${id}" style="width:100%;border:1.5px solid #0070d2;border-radius:6px;padding:.5rem .7rem;font-family:inherit;font-size:.88rem;resize:vertical;outline:none;background:#fff;">${esc(current)}</textarea>
   <div style="display:flex;gap:.4rem;margin-top:.4rem;justify-content:flex-end;">
@@ -1672,7 +1873,7 @@ function sdemoRender() {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="font-size:.75rem;font-weight:500;color:#7a7570;">${esc(q.authorName||'Anonymous')}</span>
           ${q.pinned ? '<span style="font-size:.65rem;font-weight:500;padding:2px 6px;border-radius:20px;background:#f3e8ff;color:#6a0dad;">Pinned</span>' : ''}
-          ${q.status==='answered' ? '<span style="font-size:.65rem;font-weight:500;padding:2px 6px;border-radius:20px;background:#e8f5e9;color:#2e7d32;">Answered</span>' : '<span style="font-size:.65rem;font-weight:500;padding:2px 6px;border-radius:20px;background:#fff3e0;color:#e65100;">Pending</span>'}
+          ${q.status==='answered' ? htmlAnsweredStatusBadges(q) : '<span style="font-size:.65rem;font-weight:500;padding:2px 6px;border-radius:20px;background:#fff3e0;color:#e65100;">Pending</span>'}
         </div>
         ${mine ? `<button onclick="sdemoOpenEdit('${q.id}')" style="font-size:.72rem;color:#b0aba4;background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 6px;border-radius:4px;">Edit</button>` : ''}
       </div>
@@ -2066,6 +2267,7 @@ function instructorFormatToolbarHtml(textareaId) {
   const safe = instructorFormatToolbarAttrId(textareaId);
   return `<div class="format-toolbar format-toolbar--compact" data-fmt-target="${safe}" role="toolbar" aria-label="Insert formatting">
     <span class="format-toolbar-label">Format</span>
+    <div class="format-toolbar-rail">
     <button type="button" class="fmt-btn fmt-btn-b" data-fmt="bold" title="Bold" aria-label="Bold"><strong>B</strong></button>
     <button type="button" class="fmt-btn fmt-btn-i" data-fmt="italic" title="Italic" aria-label="Italic"><em>I</em></button>
     <button type="button" class="fmt-btn fmt-btn-s" data-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><span style="text-decoration:line-through;">S</span></button>
@@ -2079,12 +2281,241 @@ function instructorFormatToolbarHtml(textareaId) {
       <summary class="fmt-more-summary" title="More emojis — opens below or above to fit (Unicode)">⋯</summary>
       <div class="fmt-emoji-grid" data-emoji-picker-autofill data-emoji-target-id="${escFmtAttr(textareaId)}" role="group" aria-label="More emojis"></div>
     </details>
+    </div>
   </div>`;
+}
+
+const INSTR_SIDEBAR_LS_W = 'sqa_instructor_sidebar_px';
+const INSTR_SIDEBAR_LS_COLLAPSED = 'sqa_instructor_sidebar_collapsed';
+const INSTR_SIDEBAR_MIN = 220;
+const INSTR_SIDEBAR_DEFAULT = 320;
+let instrSidebarDrag = null;
+
+function instrSidebarIsStacked() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+}
+
+function getInstrSidebarMaxPx() {
+  const vw = typeof window.innerWidth === 'number' ? window.innerWidth : 1024;
+  return Math.max(INSTR_SIDEBAR_MIN, Math.min(520, Math.floor(vw * 0.46)));
+}
+
+function clampInstrSidebarW(w) {
+  return Math.max(INSTR_SIDEBAR_MIN, Math.min(getInstrSidebarMaxPx(), Math.round(Number(w) || INSTR_SIDEBAR_DEFAULT)));
+}
+
+function readInstrSidebarCollapsed() {
+  try {
+    return localStorage.getItem(INSTR_SIDEBAR_LS_COLLAPSED) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function readInstrSidebarWidthPx() {
+  try {
+    const v = localStorage.getItem(INSTR_SIDEBAR_LS_W);
+    if (v != null && v !== '') return clampInstrSidebarW(parseInt(v, 10));
+  } catch (e2) {}
+  return INSTR_SIDEBAR_DEFAULT;
+}
+
+function persistInstrSidebarState(collapsed, w) {
+  try {
+    if (collapsed) {
+      localStorage.setItem(INSTR_SIDEBAR_LS_COLLAPSED, '1');
+    } else {
+      localStorage.removeItem(INSTR_SIDEBAR_LS_COLLAPSED);
+      localStorage.setItem(INSTR_SIDEBAR_LS_W, String(clampInstrSidebarW(w)));
+    }
+  } catch (e) {}
+}
+
+function updateInstrSidebarResizerAria(layout, currentW, maxPx) {
+  const el = document.getElementById('instr-sidebar-resizer');
+  if (!el) return;
+  const collapsed = layout && layout.classList.contains('app-body--sidebar-collapsed');
+  const maxV = maxPx != null ? maxPx : getInstrSidebarMaxPx();
+  el.setAttribute('aria-valuenow', String(collapsed ? 0 : currentW));
+  el.setAttribute('aria-valuemin', String(collapsed ? 0 : INSTR_SIDEBAR_MIN));
+  el.setAttribute('aria-valuemax', String(maxV));
+  el.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function applyInstrSidebarToDom() {
+  const layout = document.getElementById('instr-app-body');
+  const resizer = document.getElementById('instr-sidebar-resizer');
+  if (!layout) return;
+  const maxPx = getInstrSidebarMaxPx();
+  if (instrSidebarIsStacked()) {
+    layout.classList.remove('app-body--sidebar-collapsed');
+    layout.style.removeProperty('--instr-sidebar-px');
+    if (resizer) {
+      resizer.setAttribute('aria-hidden', 'true');
+      resizer.setAttribute('tabindex', '-1');
+    }
+    return;
+  }
+  if (resizer) {
+    resizer.removeAttribute('aria-hidden');
+    resizer.setAttribute('tabindex', '0');
+  }
+  const collapsed = readInstrSidebarCollapsed();
+  const w = clampInstrSidebarW(readInstrSidebarWidthPx());
+  layout.classList.toggle('app-body--sidebar-collapsed', collapsed);
+  if (collapsed) {
+    layout.style.setProperty('--instr-sidebar-px', '0px');
+  } else {
+    layout.style.setProperty('--instr-sidebar-px', `${w}px`);
+  }
+  updateInstrSidebarResizerAria(layout, collapsed ? 0 : w, maxPx);
+}
+
+function toggleInstrSidebarFromArrow() {
+  if (instrSidebarIsStacked()) return;
+  const layout = document.getElementById('instr-app-body');
+  if (!layout) return;
+  const collapsed = layout.classList.contains('app-body--sidebar-collapsed');
+  if (collapsed) {
+    const w = readInstrSidebarWidthPx();
+    persistInstrSidebarState(false, w);
+  } else {
+    let cur = parseInt(layout.style.getPropertyValue('--instr-sidebar-px'), 10);
+    if (!Number.isFinite(cur) || cur <= 0) cur = readInstrSidebarWidthPx();
+    cur = clampInstrSidebarW(cur);
+    try {
+      localStorage.setItem(INSTR_SIDEBAR_LS_W, String(cur));
+    } catch (e) {}
+    try {
+      localStorage.setItem(INSTR_SIDEBAR_LS_COLLAPSED, '1');
+    } catch (e2) {}
+  }
+  applyInstrSidebarToDom();
+}
+
+function initInstructorSidebarResizer() {
+  const layout = document.getElementById('instr-app-body');
+  const track = document.getElementById('instr-sidebar-resizer-track');
+  const resizer = document.getElementById('instr-sidebar-resizer');
+  if (!layout || !track || !resizer) return;
+  if (track.dataset.instrSidebarInit === '1') return;
+  track.dataset.instrSidebarInit = '1';
+
+  function endDrag(ev) {
+    if (!instrSidebarDrag) return;
+    const pid = instrSidebarDrag.pointerId;
+    const lastW = instrSidebarDrag.lastW;
+    instrSidebarDrag = null;
+    document.body.classList.remove('instr-sidebar-is-resizing');
+    try {
+      if (track.releasePointerCapture && pid != null) track.releasePointerCapture(pid);
+    } catch (e) {}
+    persistInstrSidebarState(false, lastW);
+    applyInstrSidebarToDom();
+  }
+
+  track.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (instrSidebarIsStacked()) return;
+    e.preventDefault();
+    const side = document.getElementById('instr-side-panel');
+    let startW;
+    if (layout.classList.contains('app-body--sidebar-collapsed')) {
+      startW = clampInstrSidebarW(readInstrSidebarWidthPx());
+      layout.classList.remove('app-body--sidebar-collapsed');
+      try {
+        localStorage.removeItem(INSTR_SIDEBAR_LS_COLLAPSED);
+      } catch (err) {}
+      layout.style.setProperty('--instr-sidebar-px', `${startW}px`);
+    } else {
+      const rw = side && side.getBoundingClientRect ? side.getBoundingClientRect().width : 0;
+      startW = clampInstrSidebarW(rw > 40 ? rw : readInstrSidebarWidthPx());
+    }
+    instrSidebarDrag = { startX: e.clientX, startW, lastW: startW, pointerId: e.pointerId };
+    document.body.classList.add('instr-sidebar-is-resizing');
+    try {
+      track.setPointerCapture(e.pointerId);
+    } catch (e2) {}
+  });
+
+  track.addEventListener('pointermove', (e) => {
+    if (!instrSidebarDrag) return;
+    const dx = e.clientX - instrSidebarDrag.startX;
+    const nw = clampInstrSidebarW(instrSidebarDrag.startW + dx);
+    instrSidebarDrag.lastW = nw;
+    layout.classList.remove('app-body--sidebar-collapsed');
+    try {
+      localStorage.removeItem(INSTR_SIDEBAR_LS_COLLAPSED);
+    } catch (e3) {}
+    layout.style.setProperty('--instr-sidebar-px', `${nw}px`);
+    updateInstrSidebarResizerAria(layout, nw, getInstrSidebarMaxPx());
+  });
+
+  track.addEventListener('pointerup', endDrag);
+  track.addEventListener('pointercancel', endDrag);
+
+  resizer.addEventListener('dblclick', (e) => {
+    if (instrSidebarIsStacked()) return;
+    if (instrSidebarDrag) return;
+    e.preventDefault();
+    toggleInstrSidebarFromArrow();
+  });
+
+  resizer.addEventListener('keydown', (e) => {
+    if (instrSidebarIsStacked()) return;
+    const maxPx = getInstrSidebarMaxPx();
+    let cur = parseInt(layout.style.getPropertyValue('--instr-sidebar-px'), 10);
+    if (layout.classList.contains('app-body--sidebar-collapsed')) cur = INSTR_SIDEBAR_MIN;
+    if (!Number.isFinite(cur) || cur <= 0) cur = readInstrSidebarWidthPx();
+    cur = clampInstrSidebarW(cur);
+    const step = 24;
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (layout.classList.contains('app-body--sidebar-collapsed')) return;
+      const nwR = clampInstrSidebarW(cur + step);
+      layout.style.setProperty('--instr-sidebar-px', `${nwR}px`);
+      persistInstrSidebarState(false, nwR);
+      applyInstrSidebarToDom();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (layout.classList.contains('app-body--sidebar-collapsed')) return;
+      const nwL = clampInstrSidebarW(cur - step);
+      layout.style.setProperty('--instr-sidebar-px', `${nwL}px`);
+      persistInstrSidebarState(false, nwL);
+      applyInstrSidebarToDom();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      if (!layout.classList.contains('app-body--sidebar-collapsed')) {
+        layout.style.setProperty('--instr-sidebar-px', `${maxPx}px`);
+        persistInstrSidebarState(false, maxPx);
+        applyInstrSidebarToDom();
+      }
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (!layout.classList.contains('app-body--sidebar-collapsed')) {
+        layout.style.setProperty('--instr-sidebar-px', `${INSTR_SIDEBAR_MIN}px`);
+        persistInstrSidebarState(false, INSTR_SIDEBAR_MIN);
+        applyInstrSidebarToDom();
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleInstrSidebarFromArrow();
+    }
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => applyInstrSidebarToDom(), 120);
+  });
+
+  applyInstrSidebarToDom();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   initFmtEmojiPickerLayout();
   fillFmtEmojiPickerGrids();
+  initInstructorSidebarResizer();
   document.getElementById('signin-pin').addEventListener('keydown', e => { if (e.key==='Enter') instructorLogin(); });
   document.getElementById('reg-pin2').addEventListener('keydown', e => { if (e.key==='Enter') instructorRegister(); });
   let instrSearchTimer = null;
@@ -2113,6 +2544,89 @@ document.addEventListener('DOMContentLoaded', () => {
       else insertEmoji(tid, emBtn.getAttribute('data-emoji'));
       const det = (fmtBtn || emBtn).closest('details');
       if (det) det.open = false;
+    });
+  }
+  const snHost = document.getElementById('session-notes-editor-host');
+  if (snHost) {
+    snHost.addEventListener('click', function (e) {
+      const collapseTgl = e.target.closest && e.target.closest('[data-sn-collapse]');
+      if (collapseTgl) {
+        e.preventDefault();
+        toggleSessionNoteEditorCollapse(collapseTgl.getAttribute('data-sn-collapse'));
+        return;
+      }
+      const rm = e.target.closest && e.target.closest('[data-sn-remove]');
+      if (rm) {
+        e.preventDefault();
+        removeSessionNoteCard(rm.getAttribute('data-sn-remove'));
+        return;
+      }
+      const addLinkBtn = e.target.closest && e.target.closest('.sn-add-link-row-btn');
+      if (addLinkBtn) {
+        e.preventDefault();
+        const card = addLinkBtn.closest('.session-note-edit-card');
+        const rowsWrap = card && card.querySelector('.sn-links-rows');
+        if (!rowsWrap) return;
+        const nRows = rowsWrap.querySelectorAll('.sn-link-row').length;
+        if (nRows >= SESSION_NOTE_LINKS_MAX) {
+          showToast(`At most ${SESSION_NOTE_LINKS_MAX} links per note.`);
+          return;
+        }
+        rowsWrap.insertAdjacentHTML('beforeend', sessionNoteLinkRowTemplate());
+        return;
+      }
+      const rmLink = e.target.closest && e.target.closest('.sn-link-remove-btn');
+      if (rmLink) {
+        e.preventDefault();
+        const row = rmLink.closest('.sn-link-row');
+        if (row) row.remove();
+        return;
+      }
+      const fmtBtn = e.target.closest('.format-toolbar[data-fmt-target] .fmt-btn[data-fmt]');
+      const emBtn = e.target.closest('.format-toolbar[data-fmt-target] .fmt-btn[data-emoji]');
+      if (!fmtBtn && !emBtn) return;
+      const bar = (fmtBtn || emBtn).closest('.format-toolbar[data-fmt-target]');
+      if (!bar) return;
+      const tid = bar.getAttribute('data-fmt-target');
+      if (!tid) return;
+      e.preventDefault();
+      if (fmtBtn) insertSlackFormat(tid, fmtBtn.getAttribute('data-fmt'));
+      else insertEmoji(tid, emBtn.getAttribute('data-emoji'));
+      const det = (fmtBtn || emBtn).closest('details');
+      if (det) det.open = false;
+    });
+    snHost.addEventListener('dragstart', (e) => {
+      const h = e.target.closest && e.target.closest('.sn-drag-handle');
+      if (!h) return;
+      const card = h.closest('.session-note-edit-card');
+      if (!card) return;
+      e.dataTransfer.setData('text/plain', card.getAttribute('data-note-id'));
+      e.dataTransfer.effectAllowed = 'move';
+      card.classList.add('is-dragging');
+    });
+    snHost.addEventListener('dragend', () => {
+      snHost.querySelectorAll('.session-note-edit-card.is-dragging').forEach(c => c.classList.remove('is-dragging'));
+      snHost.querySelectorAll('.session-note-edit-card.sn-drag-over').forEach(c => c.classList.remove('sn-drag-over'));
+    });
+    snHost.addEventListener('dragover', (e) => {
+      const card = e.target.closest && e.target.closest('.session-note-edit-card');
+      snHost.querySelectorAll('.session-note-edit-card.sn-drag-over').forEach(c => {
+        if (c !== card) c.classList.remove('sn-drag-over');
+      });
+      if (!card || card.classList.contains('is-dragging')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      card.classList.add('sn-drag-over');
+    });
+    snHost.addEventListener('drop', (e) => {
+      const card = e.target.closest && e.target.closest('.session-note-edit-card');
+      if (!card) return;
+      e.preventDefault();
+      card.classList.remove('sn-drag-over');
+      const dragId = e.dataTransfer.getData('text/plain');
+      const dropId = card.getAttribute('data-note-id');
+      reorderSessionNotesDraft(dragId, dropId);
+      renderSessionNotesEditor();
     });
   }
   document.body.addEventListener('click', (e) => {
@@ -2168,6 +2682,8 @@ Object.assign(globalThis, {
   insertSlackFormat,
   insertEmoji,
   saveSessionNote,
+  addSessionNoteCard,
+  removeSessionNoteCard,
   addInstructor,
   setSort,
   clearInstructorSearch,

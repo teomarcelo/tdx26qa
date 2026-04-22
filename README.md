@@ -34,7 +34,7 @@ For a **dated history** (fixes, UI tweaks, rich text, toolbars), see **`CHANGELO
 
 ## Students (attendees)
 
-- Join with a session code (e.g. `SQA-XXXX`). On desktop, **Sort**, **Stats**, and **Session** sit in the right column; the question feed stays on the left (narrow screens stack the sidebar first so controls stay near the top).
+- Join with a session code (e.g. `SQA-XXXX`). On desktop, **Sort**, **Stats**, and **Session** sit in the right column; the question feed stays on the left (narrow screens stack the sidebar first so controls stay near the top). A **narrow strip** between the columns is the resize handle: **drag** to change width, **double-click** to collapse or expand the sidebar (saved in this browser).
 - Optional name, or post as **Anonymous** (non-anonymous names are remembered in this browser).
 - **Same browser:** a stable **student id** and your **last session code** are stored locally so a normal page refresh reopens the board without typing the code again (until **Leave**). That id is the `authorId` on your questions and votes—not your display name—so retyping the same name does not create a second “you” in Firebase.
 - Ask questions, **edit your own** questions while in the same browser session, **upvote** any question.
@@ -51,7 +51,7 @@ For a **dated history** (fixes, UI tweaks, rich text, toolbars), see **`CHANGELO
 - **Account:** display name + PIN (PIN is stored hashed in Firestore; see `SETUP.md` for limits).
 - **Sessions:** create a session (code generated for you), edit session info, copy the code for students. Co-instructors can **join an existing session** with the same code. You can **hide a session from your own sidebar** (Firestore keeps the session; **join again** with the code to put it back on your list).
 - **Session sidebar note** (“Important”): optional title, message, and `https://` image URLs for the student **Session** panel; Slack-style formatting; format toolbar on the message field.
-- **During class:** answer (including follow-up answers), **pin** questions, mark answered/pending, **delete** questions. The newest **25** questions update **live**; use **Load older questions** for earlier posts. Draft answers are kept when the list refreshes. Rendered **code** (inline and fenced) in threads includes a **copy** control for students.
+- **During class:** answer (including follow-up answers); **Answered verbally** and **Mark pending** are separate controls (always visible—order: Save answer → Answered verbally → Pin → Mark pending → Delete); **pin** and **delete** questions. The newest **25** questions update **live**; use **Load older questions** for earlier posts. Draft answers are kept when the list refreshes. Rendered **code** (inline and fenced) in threads includes a **copy** control for students. Status badges can show **Answered verbally** (live/in-app mark) and/or **Answered** when there is a written reply.
 - **Demo mode:** try the UI with sample data and no Firebase (button on the login screen).
 
 ---
