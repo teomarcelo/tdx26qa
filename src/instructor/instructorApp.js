@@ -2663,7 +2663,7 @@ function fillFmtEmojiPickerGrids() {
     if (!tid) return;
     ensureFmtEmojiGridShell(grid);
     grid.innerHTML = FORMAT_EMOJI_PICKER_CHARS.map(ch =>
-      '<button type="button" class="fmt-btn fmt-emoji fmt-emoji-picker-cell" style="' + FMT_EMOJI_PICKER_INLINE_STYLE + '" data-emoji-target="' + escFmtAttr(tid) + '" data-ch="' + escFmtAttr(ch) + '" title="Insert" aria-label="Insert emoji">' + ch + '</button>'
+      '<button type="button" class="fmt-btn fmt-emoji fmt-emoji-picker-cell" style="' + FMT_EMOJI_PICKER_INLINE_STYLE + '" data-emoji-target="' + escFmtAttr(tid) + '" data-ch="' + escFmtAttr(ch) + '" title="Insert" aria-label="Insert emoji"><span class="fmt-emoji-char">' + ch + '</span></button>'
     ).join('');
     requestAnimationFrame(() => {
       const shell = grid.closest('.fmt-emoji-grid-shell');
