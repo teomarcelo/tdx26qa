@@ -4,9 +4,11 @@ out/
 node_modules/
 
 # Env secrets — NEVER commit real values
-.env.local
-.env.production.local
-.env.development.local
+# GOOGLE_CLIENT_SECRET and SESSION_SECRET live here, so match `.env` too:
+# a bare `.env` was previously untracked but not ignored, and `git add .`
+# would have staged it.
+.env
+.env*.local
 
 # OS / editor
 .DS_Store

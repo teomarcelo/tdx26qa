@@ -48,6 +48,9 @@ export default function JoinScreen({ storedName, joinError, joining, onJoin }) {
   }
 
   function handleSubmit() {
+    // Only the button carries `disabled`, so Enter could fire a second join while
+    // the first was still in flight.
+    if (joining) return;
     const sufEl = codeInputRef.current;
     const code = buildSessionCodeFromJoinRow(sufEl);
 
@@ -99,13 +102,15 @@ export default function JoinScreen({ storedName, joinError, joining, onJoin }) {
               placeholder="AB12"
               autoComplete="off"
               spellCheck={false}
+              aria-describedby="join-error"
+              aria-invalid={errorMsg ? 'true' : 'false'}
               onChange={handleCodeChange}
               onKeyDown={handleCodeKeyDown}
             />
           </div>
         </div>
         <div className="field">
-          <label>
+          <label htmlFor="name-input">
             Your name{' '}
             <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-light)' }}>
               (optional)
@@ -128,7 +133,10 @@ export default function JoinScreen({ storedName, joinError, joining, onJoin }) {
         <button className="btn-primary" id="join-btn" disabled={joining} onClick={handleSubmit}>
           {joining ? 'Joining…' : 'Join session'}
         </button>
-        <p className="error-msg" id="join-error">{errorMsg}</p>
+        {/* Always mounted so the card does not reflow when a join fails. role="alert"
+            has nothing to announce while it is empty; the announcement happens when
+            text appears. */}
+        <p className="error-msg" id="join-error" role="alert">{errorMsg}</p>
       </div>
     </div>
   );

@@ -1,14 +1,19 @@
 # React Refactor — Session Q&A
 
-## Status: IN PROGRESS — DO NOT MERGE OR DEPLOY
+## Status: COMPLETE — this file is a historical record
 
-This branch (`react-refactor`) contains a full rewrite of the UI from vanilla
-JavaScript to React. The app is in active production use for live Salesforce
-workshops.
+The React rewrite **shipped**. Both the student and instructor apps are React on
+`main` today (see `CLAUDE.md`), so this document is kept as the record of what was
+decided and why, not as a description of current state or a set of instructions.
+The `react-refactor` branch still exists locally and on `origin`.
 
-**Nothing on this branch goes to GitHub or production until Teo explicitly
-says "push" or "deploy."** The `main` branch remains clean and production-ready
-at all times.
+Read the rest in past tense. The **Architecture decisions** below all held and are
+still the reasons the code looks the way it does. Where a later section describes
+something that has since changed, it is flagged inline.
+
+The original working rule while the branch was live, kept for context: nothing went
+to GitHub or production until Teo explicitly said "push" or "deploy," and `main`
+stayed production-ready throughout. That rule still governs the repo generally.
 
 ---
 
@@ -108,7 +113,14 @@ MUI, Chakra, etc. would require fighting or ripping out the existing CSS.
 
 ---
 
-## Folder structure (target)
+## Folder structure (target as planned — not the final layout)
+
+This was the plan drafted before the work started, and the finished code diverged
+from it. Two examples: `src/shared/` ended up with `FirebaseContext.jsx` and
+`ImageLightbox.jsx` only, not the six files listed here, and
+`StudentDemoPanel.jsx` was built and has since been **deleted**. The tree is left
+as drafted so the plan stays legible; consult the repo, not this block, for what
+exists now.
 
 ```
 src/
@@ -191,7 +203,10 @@ This is the highest-risk state in the refactor. The model:
 - Pages 1+ are fetched on demand via `.startAfter(endSnap)` and cached
 - Navigating back to page 0 uses the cached value; it does not re-fetch
 - Navigating away from page 0 pauses live updates for that session
-- The student app polls instead of using `onSnapshot` for questions
+- ~~The student app polls instead of using `onSnapshot` for questions~~ — **no
+  longer true.** Student polling was removed after the refactor; page 0 on the
+  student side is now an `onSnapshot` listener too (`STUDENT_POLL_MS` no longer
+  exists in `src/`). The rest of the model above still describes the code.
 
 This must be modeled as explicit state in each app's store/hooks, not
 reconstructed from side effects.

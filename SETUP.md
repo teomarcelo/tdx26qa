@@ -29,50 +29,32 @@
 
 ## Step 2: Firestore Security Rules
 
-In Firebase Console → Firestore → **Rules**, replace the entire editor contents with the rules below.
+**[`firestore.rules`](firestore.rules) in this repo is the only source of truth.** Do not hand-write rules for this app and do not copy a ruleset out of this guide — the real file is 631 lines (`wc -l firestore.rules`) and it is what the automated test suite is written against. Anything shorter that you paste into the console is a downgrade.
 
-**Copy/paste checklist (fixes “Line 2: mismatched input `match`”):**
+The rules require Firebase Auth: instructor writes need a **verified `@salesforce.com`** email, student edits are bound to the author's uid, and question moderation is scoped to instructors *of that session*. They are the app's only authorization layer, because App Check is registered but **not enforced** (see `CLAUDE.md`).
 
-1. The file **must** start with `rules_version = '2';` on line 1.
-2. Line **2** must be exactly `service cloud.firestore {` — do **not** start at `match /databases/...` or Firebase will reject the rules.
-3. Do **not** paste the Markdown backticks (`` ``` ``) from this doc—only the rules text.
-4. You can also open **`firestore.rules`** in this repo and copy everything from there (no Markdown).
+Pick one of these two ways to install them.
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
+**Option A — deploy from the repo (preferred).** Nothing to copy, so nothing can go stale:
 
-    // Instructors self-register — PIN is stored hashed (SHA-256), never plain text
-    match /instructors/{instructorId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if true;
-      allow delete: if false;
-    }
-
-    // Sessions (instructor creates/updates class info) and questions
-    match /sessions/{sessionId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if false;
-      match /questions/{questionId} {
-        allow read: if true;
-        allow create: if true;
-        // Updates keep authorId unchanged (votes, answers, status, student text edits).
-        allow update: if resource.data.authorId == request.resource.data.authorId;
-        // Instructors delete from the dashboard; without Firebase Auth this cannot be restricted to “only instructors”.
-        allow delete: if true;
-      }
-    }
-  }
-}
+```bash
+npx firebase-tools deploy --only firestore:rules --project <your-project-id>
 ```
 
-> **Security:** These rules are for **trusted / internal** use (e.g. a workshop or team room). Anyone with your
-> deployed `student.html` / `instructor.html` can call Firestore with your web API key, so a
-> motivated user could delete questions or change data unless you add **Firebase Authentication**
-> and tighten rules (e.g. only signed-in instructors may `delete` or update session docs).
+The project id comes from `.firebaserc` or your own Firebase project. For this repo's production project that flag is `--project tdx-qa`, and the same command form appears in `.claude/skills/deploy-and-verify.md`.
+
+**Option B — paste into the console.** Open **`firestore.rules`** in this repo, select the whole file, and paste it over the entire contents of Firebase Console → Firestore → **Rules**. Two things to watch:
+
+1. Copy from the **file**, never from rendered Markdown — you would carry in backticks that Firebase rejects.
+2. Paste the file *whole*, starting at `rules_version = '2';` on line 1. A partial paste that begins at `match /databases/...` fails with “Line 2: mismatched input `match`”.
+
+Verify before you deploy. The rules have an emulator-backed test suite; run it against the throwaway `demo-session-qa` project, never against production:
+
+```bash
+npm run test:rules
+```
+
+> **Editing `firestore.rules` locally does nothing to production.** The file is inert until someone runs the deploy command above. A code-only deploy ships the app with the *old* rules still live.
 
 ### Instructor notes for students (Instructor Notes in the sidebar editor)
 
@@ -112,22 +94,27 @@ No rule change is required for this UI-only flag:
 
 ### Firebase Storage (paste screenshots)
 
-Pasting an image into the **student question** box or an **instructor answer** box uploads a JPEG to Cloud Storage under `sessions/{sessionCode}/…`. You must enable **Storage** in the Firebase console (same project as Firestore), then add **Rules** similar to:
+Pasting an image into the **student question** box or an **instructor answer** box uploads a JPEG to Cloud Storage. You must enable **Storage** in the Firebase console (same project as Firestore).
 
-```
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /sessions/{sessionId}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.resource.size < 4 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*');
-    }
-  }
-}
+Actual upload paths, per [`storage.rules`](storage.rules):
+
+- `sessions/{code}/question_paste/` for student question pastes (any signed-in identity)
+- `sessions/{code}/answer_paste/` for instructor answer pastes (verified `@salesforce.com` only)
+- `sessions/{code}/images/` for instructor session-note images (verified `@salesforce.com` only)
+
+**[`storage.rules`](storage.rules) in this repo is the only source of truth for Storage**, exactly as `firestore.rules` is for Firestore. Do not paste a ruleset out of this guide. The real file requires an authenticated identity, caps uploads at **8 MB**, and requires `contentType == 'image/jpeg'` exactly.
+
+Install it the same two ways:
+
+```bash
+npx firebase-tools deploy --only storage --project <your-project-id>
 ```
 
-Tighten these rules (auth, App Check, smaller size) before a fully public launch. If Storage is disabled or rules deny the write, paste will show an error toast and nothing is stored.
+Or open **`storage.rules`** and paste the whole file over Firebase Console → Storage → **Rules**, starting at `rules_version = '2';` on line 1.
+
+`npm run test:rules` covers this file too (`test/storage.rules.test.mjs`) alongside the Firestore suite. As with Firestore, **editing `storage.rules` locally changes nothing until it is deployed.**
+
+If Storage is disabled or the rules deny the write, paste shows an error toast and nothing is stored.
 
 ### Storage CORS (fixes localhost / browser upload errors)
 
@@ -182,68 +169,39 @@ Local development: **`npm run dev`** then open **`http://localhost:5173/`** (sma
 
 ---
 
-## Step 4: Host it (free options)
+## Step 4: Host it
 
-### Option A — Netlify (easiest, ~2 minutes)
-1. Go to https://netlify.com → sign up free
-2. Run **`npm run build`**, then drag and drop the **`dist/`** folder onto the Netlify dashboard (or connect the repo and set **Build command** `npm run build`, **Publish directory** `dist`).
-3. You'll get URLs like:
-   - `https://your-app.netlify.app/student.html` ← share with students
-   - `https://your-app.netlify.app/instructor.html` ← instructors only
+### Option A — Firebase Hosting (what this repo actually does)
 
-### Option B — GitHub Pages (GitHub Actions)
+Production is Firebase Hosting, published **by hand** with the Firebase CLI. There is no CI deploy: pushing to `main` deploys nothing. The full sequence, including building from a clean checkout rather than the working tree, is in **`.claude/skills/deploy-and-verify.md`**. The core command:
 
-This repo ships **`.github/workflows/deploy-pages.yml`**, which builds with **Node 20** and deploys the **`dist/`** folder whenever you push to **`main`** (or run the workflow manually).
+```bash
+npx firebase-tools deploy --only hosting:app --project <your-project-id>
+```
 
-#### One-time GitHub setup
+`firebase.json` defines two hosting targets: **`app`** (serves `dist/`) and **`legacy`** (redirect-only). Hosting and rules deploy **separately** — `--only hosting:app` does not ship `firestore.rules` or `storage.rules`. See Step 2 for those.
 
-1. **Create the repo** on GitHub (empty is fine) and **push this project** (replace `YOUR-ORG` / `YOUR-REPO`):
+### Option B — Netlify or any static host
 
-   ```bash
-   git remote add origin https://github.com/YOUR-ORG/YOUR-REPO.git
-   git push -u origin main
-   ```
+1. Run **`npm run build`**.
+2. Upload the contents of **`dist/`**, or connect the repo with **Build command** `npm run build` and **Publish directory** `dist`.
+3. You get URLs like `https://your-app.netlify.app/student.html` (students) and `/instructor.html` (instructors).
 
-   If your default branch is **`master`**, either rename it to **`main`** in GitHub (**Settings → General → Default branch**) or edit **`.github/workflows/deploy-pages.yml`** so `branches: [main]` matches your branch name.
+Whatever host you pick, add its exact origin to **`storage-cors.json`** and run `gsutil cors set …` (see **Storage CORS** above), or image uploads fail from the deployed site. Also add the domain under Firebase **Authentication → Settings → Authorized domains**, or sign-in fails.
 
-2. **Firebase at build time:** `npm run build` reads **`src/config/firebase.js`** (or **`VITE_FIREBASE_*`** env vars). For a public repo, prefer **GitHub Actions secrets**: repo **Settings → Secrets and variables → Actions → New repository secret** for each of `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, then add an `env:` block to the **`npm run build`** step in the workflow file mapping `secrets.VITE_FIREBASE_API_KEY` → `VITE_FIREBASE_API_KEY`, etc. If you skip secrets, the committed config in **`firebase.js`** is what the Action build uses.
+### GitHub Pages — retired
 
-3. **Turn on GitHub Pages from Actions:** Repo **Settings → Pages → Build and deployment → Source:** choose **GitHub Actions** (not “Deploy from a branch”). Save if prompted.
+Earlier revisions of this guide walked through a **`.github/workflows/deploy-pages.yml`** Actions deploy. **That workflow no longer exists in this repo** (`.github/` is absent, and `git ls-files .github` returns nothing), and `https://teomarcelo.github.io/session-qa/` returns 404. Do not follow Pages instructions for this project; use Option A.
 
-   **Critical:** If **Source** is set to **Deploy from a branch** (e.g. **`main`** / **`/` (root)**), GitHub publishes the **raw repo files** — `student.html` still contains `/src/student/main.js`, which does **not** exist on Pages, so **no CSS and no app JS** (the join screen looks like plain HTML). Only **GitHub Actions** as the source publishes the **`npm run build`** output from **`dist/`**, where links look like **`./assets/…`**.
-
-4. **First deploy:** Push to **`main`** (or **Actions → Deploy to GitHub Pages → Run workflow**). Open the workflow run; when it is green, **Settings → Pages** will show the **site URL** (often `https://<user>.github.io/<repo>/`).
-
-5. **Optional first-time prompt:** If GitHub asks you to **configure** the **`github-pages`** environment, approve it (**Settings → Environments → github-pages**).
-
-#### URLs to bookmark after deploy
-
-- Hub: `https://<user>.github.io/<repo>/` (opens **`index.html`**)
-- Students: `https://<user>.github.io/<repo>/student.html`
-- Instructors: `https://<user>.github.io/<repo>/instructor.html`
-
-**Storage CORS:** Add your real **`https://<user>.github.io`** origin to **`storage-cors.json`** and run **`gsutil cors set …`** (see **Storage CORS** above), or image uploads may fail from the deployed site.
-
-#### Troubleshooting: student page has no styling (unstyled join form)
-
-1. In the browser, open **View Page Source** (not DevTools Elements) for **`student.html`**.
-2. If you see **`src="/src/student/main.js"`** (or **`/src/`** anywhere), the live site is **not** the Vite build. Go back to **Settings → Pages** and set **Source** to **GitHub Actions** only; disable **Deploy from a branch** if it is selected.
-3. Open **Actions** → **Deploy to GitHub Pages** — the latest run must be **green**. If it never ran, push a commit or use **Run workflow**.
-4. After the deploy finishes, do a **hard refresh** (e.g. **Cmd+Shift+R** / **Ctrl+Shift+R**) so the browser does not keep an old HTML cache.
-
-When it is correct, View Source will show **`<link rel="stylesheet" … href="./assets/student-….css">`** and **`<script type="module" … src="./assets/student-….js">`**.
-
-#### Manual alternative (no Actions)
-
-From your machine: **`npm run build`**, then upload the contents of **`dist/`** to any static host (or push **`dist`** to a **`gh-pages`** branch with only that folder’s contents at root). The Actions workflow avoids committing **`dist/`**.
+One piece of that troubleshooting is still worth keeping, because it applies to any static host: if the deployed **`student.html`** has no CSS and the join form looks like plain HTML, open **View Page Source**. Seeing `src="/src/student/main.js"` means the host is serving the **raw repo files**, not the Vite build — publish **`dist/`** instead. A correct deploy shows `href="./assets/student-….css"` and `src="./assets/student-….js"`. Then hard-refresh (**Cmd+Shift+R** / **Ctrl+Shift+R**) so the browser drops the old HTML.
 
 ---
 
 ## How to run a session
 
 1. Open **`instructor.html`** (from `npm run dev` during development, or from **`dist/instructor.html`** after `npm run build` when hosted)
-2. First time: click **Create an account** → enter your name and choose a PIN
-3. Return visits: sign in with your name and PIN
+2. Click **Continue with Google** and pick your `@salesforce.com` account. Optionally type the name students should see first — there is no account to create and no PIN (see **Instructor accounts** below)
+3. Return visits: the same button, and Google usually keeps you signed in
 4. Click **+ New session** — the modal matches **Session settings** (session name, date/time, room, description, OrgClaim, survey link/ID). A code like `SQA-A7K2` is generated when you **Create session**; those values load into **Session settings** in the sidebar automatically.
 5. You can still change anything later in **Session settings** → **Save session info**
 6. Share the session code with students — they go to `student.html` and enter the code
@@ -278,30 +236,28 @@ read limit. If you see a quota warning in the Firebase console, upgrade to the *
 
 ## Instructor accounts
 
-Each instructor creates their own account directly on `instructor.html` — no admin needed.
+There are no app-managed accounts, no registration step, and no PIN. Instructors sign in with **Google**, and identity comes from the verified email on that Google account.
 
-- Name + PIN (min 4 characters)
-- PIN is stored as a SHA-256 hash in Firestore — never plain text
-- Multiple instructors can have separate accounts independently
-- Name is the unique identifier — "Alex Rivera" and "alex rivera" are the same account
-- **`instructors/{id}`** may include **`joinedSessions`** (codes you joined) and **`sessionsHiddenFromList`** (codes hidden from *your* “My sessions” list only — no session document is deleted). **Join** the same code again to remove it from the hidden list and see it again.
+- **Sign-in:** one **Continue with Google** button on `instructor.html` (`src/instructor/components/LoginScreen.jsx`). The popup is hinted to the `salesforce.com` workspace via the `hd` parameter (`src/lib/auth.js`).
+- **The hint is not the enforcement.** [`firestore.rules`](firestore.rules) is what actually restricts access: its `isSalesforce()` helper requires `email_verified == true` **and** an email matching `^[^@]+@salesforce[.]com$`. A Google account on any other domain can sign in and read, but every instructor write is denied.
+- **Optional display name.** The name field on the sign-in screen only sets the name students see; it is not a credential and it is not how you are identified. You can change it later.
+- **Session access is by email, not by name.** Creating a session stores `ownerEmail` and seeds `instructorEmails`; joining with a code appends the joiner's verified email. Those two fields on `sessions/{code}` are what the rules check.
+- **Owner vs co-instructor are different powers.** Any verified `@salesforce.com` user can self-join a session as a co-instructor, so co-instructor membership is a self-service claim. Deleting a session and rewriting its ownership fields are owner-only.
+- **`instructors/{id}`** may include **`joinedSessions`** (codes you joined) and **`sessionsHiddenFromList`** (codes hidden from *your* “My sessions” list only — no session document is deleted). **Join** the same code again to remove it from the hidden list and see it again. The doc id is derived from your email, so `alex.rivera@` and `alexrivera@` resolve to the same account doc.
+- **Demo mode** needs no sign-in at all and touches no database.
 
 ---
 
-## Future: Salesforce OAuth (optional upgrade)
+## Console setup this depends on
 
-To restrict instructor access to @salesforce.com accounts only:
+Restricting instructor access to `@salesforce.com` is **not** a future upgrade — it shipped, and it is described under **Instructor accounts** above. What is still required is Firebase Console configuration, which no amount of local code can supply:
 
-1. In Salesforce Setup → **App Manager** → New Connected App
-2. Enable OAuth, set callback URL to your hosted instructor page
-3. Add scopes: `openid`, `profile`, `email`
-4. In Firebase Console → Authentication → Add provider → SAML / OpenID Connect
-5. In `instructor.html`, replace the PIN check with:
-   ```js
-   if (!user.email.endsWith('@salesforce.com')) { signOut(); }
-   ```
+1. **Authentication → Sign-in method:** enable **Google** (instructors) and **Anonymous** (students get a silent identity that the rules bind their writes to). Until Google is enabled the sign-in button returns a "not enabled" error; demo mode still works.
+2. **Authentication → Settings → Authorized domains:** add your production domain, plus `localhost` for local testing.
+3. **App Check:** register the web app with **reCAPTCHA v3**. Note that App Check is currently registered but **UNENFORCED**, so it protects nothing yet — see the App Check section of `CLAUDE.md` before changing that, and never flip enforcement on during an event.
+4. **Storage:** enable it in the same project (see **Firebase Storage** above), and deploy `storage.rules`.
 
-This is approximately a 1-hour upgrade once the Connected App is configured in your Salesforce org.
+`next-app/` in this repo holds a separate Next.js OAuth gateway. It has **never been deployed** and is not part of the sign-in path described above.
 
 ---
 

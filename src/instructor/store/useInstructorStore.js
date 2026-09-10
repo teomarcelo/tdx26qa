@@ -31,9 +31,13 @@ export {
 const useInstructorStore = create((set, get) => ({
   // Auth
   currentInstructor: null,      // editable DISPLAY name (what students see)
-  instructorOwnerId: null,      // stable identity key (from verified Google email)
+  instructorOwnerId: null,      // session-lookup key (from verified Google email)
   instructorLegacyOwnerId: null,// pre-OAuth name-based id, still queried so old sessions show
-  instructorEmail: null,        // verified Google email, when signed in via the gateway
+  // The verified Google email, set by the auth listener in InstructorApp. This is
+  // the ownership identity — the same value the token carries and the only thing
+  // firestore.rules compares against a session's ownerEmail — and it is here so
+  // instructorOwnsSession can decide during render without awaiting auth.
+  instructorEmail: null,
   isDemoMode: false,
 
   // Sessions
@@ -42,7 +46,11 @@ const useInstructorStore = create((set, get) => ({
   instructorSessionsHydrated: false,
 
   // Questions
-  questionPages: [],      // [{ questions: [...], endSnap }]
+  // Pages carry `stale: true` once a new question shifts page 0's boundary: their
+  // cached cursors no longer line up, so they are refetched when navigated into
+  // (see useQuestions). They stay in the array meanwhile because search and the
+  // votes sort read every cached page.
+  questionPages: [],      // [{ questions: [...], endSnap, stale }]
   currentPage: 0,
   questionsLoading: false, // true only while "Load older" fetches an extra page
   questionsHydrated: false,// false until the active session's first snapshot lands
@@ -57,10 +65,15 @@ const useInstructorStore = create((set, get) => ({
   // Answer editing
   answerDrafts: {},        // { [questionId]: string }
   pendingAnswerImages: {}, // { [questionId]: string[] }
-  answerEditState: null,   // { qId, index } | null
+  // `identity` (from answerIdentity()) is what the write commits to; `index` is
+  // only a hint, since a co-instructor's reply shifts every later position.
+  answerEditState: null,   // { qId, index, identity } | null
 
   // Session notes editor
   sessionNotesDraft: [],
+  // The remote sessionNotes array as it looked when the draft was hydrated. Used
+  // as the common ancestor when merging a save against a co-instructor's changes.
+  sessionNotesBase: [],
   sessionNoteShow: true,
 
   // Modals
@@ -68,9 +81,8 @@ const useInstructorStore = create((set, get) => ({
   joinSessionModalOpen: false,
   createSessionModalOpen: false,
 
-  // Student demo panel
+  // Student view overlay
   studentViewOpen: false,
-  sdemoFilter: 'all',
 
   // Stats serial (cancels stale requests)
   statsSerial: 0,
@@ -113,6 +125,19 @@ const useInstructorStore = create((set, get) => ({
     return { currentPage: page, allQuestions };
   }),
 
+  // Replace the pages and land on a page in ONE update. Refetching stale pages can
+  // shorten the array, and doing that as two updates renders an empty list for a
+  // frame while currentPage still points past the end.
+  setQuestionPagesAndPage: (pages, page) => set(() => {
+    const idx = Math.max(0, Math.min(page, pages.length - 1));
+    const cur = pages[idx];
+    return {
+      questionPages: pages,
+      currentPage: idx,
+      allQuestions: cur && cur.questions ? cur.questions.slice() : [],
+    };
+  }),
+
   rebuildAllQuestions: () => set((state) => {
     const cur = state.questionPages[state.currentPage];
     const allQuestions = cur && cur.questions ? cur.questions.slice() : [];
@@ -138,6 +163,7 @@ const useInstructorStore = create((set, get) => ({
   setAnswerEditState: (editState) => set({ answerEditState: editState }),
 
   setSessionNotesDraft: (notes) => set({ sessionNotesDraft: notes }),
+  setSessionNotesBase: (notes) => set({ sessionNotesBase: notes }),
   setSessionNoteShow: (val) => set({ sessionNoteShow: val }),
 
   setDeleteTargetId: (id) => set({ deleteTargetId: id }),
@@ -148,7 +174,6 @@ const useInstructorStore = create((set, get) => ({
   setCreateSessionModalOpen: (v) => set({ createSessionModalOpen: v }),
 
   setStudentViewOpen: (v) => set({ studentViewOpen: v }),
-  setSdemoFilter: (f) => set({ sdemoFilter: f }),
 
   incrementStatsSerial: () => set(state => ({ statsSerial: state.statsSerial + 1 })),
   setStats: (stats) => set({ stats }),
@@ -193,7 +218,6 @@ const useInstructorStore = create((set, get) => ({
       instructorOlderBeyondLoadExhausted: true,
       currentFilter: 'all',
       currentSort: 'recent',
-      sdemoFilter: 'all',
       searchQuery: '',
       answerDrafts: {},
       pendingAnswerImages: {},
@@ -265,12 +289,12 @@ const useInstructorStore = create((set, get) => ({
     pendingAnswerImages: {},
     answerEditState: null,
     sessionNotesDraft: [],
+    sessionNotesBase: [],
     sessionNoteShow: true,
     deleteTargetId: null,
     joinSessionModalOpen: false,
     createSessionModalOpen: false,
     studentViewOpen: false,
-    sdemoFilter: 'all',
     stats: { total: 0, answered: 0, pending: 0, pinned: 0 },
     demoFeedback: freshDemoFeedback(),
     demoResetNonce: 0,

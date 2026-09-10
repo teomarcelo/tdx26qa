@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import firebase from '../../../lib/firebaseCompat.js';
 import { useFirebase } from '../../../shared/FirebaseContext.jsx';
 import useInstructorStore from '../../store/useInstructorStore.js';
@@ -97,11 +97,34 @@ export default function SessionSettings() {
   const [surveyUrl, setSurveyUrl] = useState('');
   const [surveyCopy, setSurveyCopy] = useState('');
 
+  // Unsaved-changes detection: compare the live form to the saved session doc.
+  const activeSession = allSessions.find(x => x.id === activeSessionCode);
+  const currentForm = { sessionName, date, time, timezone, room, desc, orgClaimUrl, orgClaimCopy, surveyUrl, surveyCopy };
+  const dirty = !!activeSession
+    && JSON.stringify(currentForm) !== JSON.stringify(deriveFormFromSession(activeSession));
+
+  // Read by the hydration effect below without making it depend on every field.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const lastHydratedCodeRef = useRef(null);
+
   // Fill from active session
   useEffect(() => {
-    if (!activeSessionCode) return;
+    if (!activeSessionCode) {
+      lastHydratedCodeRef.current = null;
+      return;
+    }
     const s = allSessions.find(x => x.id === activeSessionCode);
     if (!s) return;
+    // allSessions comes from a live onSnapshot, so this effect also runs for remote
+    // changes that have nothing to do with this form — a co-instructor joining
+    // rewrites instructors/instructorEmails on the same document. Reloading the
+    // fields then discarded whatever the instructor had typed and cleared the
+    // "Unsaved changes" badge as if it had been saved, so unsaved edits are kept
+    // until they save or switch sessions.
+    const switchingSession = lastHydratedCodeRef.current !== activeSessionCode;
+    if (!switchingSession && dirtyRef.current) return;
+    lastHydratedCodeRef.current = activeSessionCode;
     const f = deriveFormFromSession(s);
     setSessionName(f.sessionName);
     setRoom(f.room);
@@ -114,12 +137,6 @@ export default function SessionSettings() {
     setTime(f.time);
     setTimezone(f.timezone);
   }, [activeSessionCode, allSessions]);
-
-  // Unsaved-changes detection: compare the live form to the saved session doc.
-  const activeSession = allSessions.find(x => x.id === activeSessionCode);
-  const currentForm = { sessionName, date, time, timezone, room, desc, orgClaimUrl, orgClaimCopy, surveyUrl, surveyCopy };
-  const dirty = !!activeSession
-    && JSON.stringify(currentForm) !== JSON.stringify(deriveFormFromSession(activeSession));
 
   const handleSave = async () => {
     if (!activeSessionCode) { showToast('Select a session first.'); return false; }

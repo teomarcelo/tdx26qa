@@ -11,6 +11,11 @@ import {
   DEMO_STUDENT_USER_NAME,
   freshDemoSession,
 } from '../demo/useStudentDemoStore.js';
+import {
+  applyDemoSessionPatch,
+  readDemoSessionPatch,
+  subscribeDemoSessionPatch,
+} from '../../lib/demoSessionSync.js';
 
 const LS_STUDENT_UID = 'sqa_student_uid';
 const LS_STUDENT_UID_LEGACY = 'tdx_student_uid';
@@ -128,17 +133,21 @@ export function useStudentSession() {
       setAppState('join');
     }
 
-    // Demo mode: bypass Firestore and auth entirely. Drop the student straight
-    // into the app on the shared demo session — no db read, no anonymous
-    // sign-in, no live listener. Everything downstream reads the in-memory demo
-    // store instead of Firestore.
+    // Demo mode: bypass Firestore and auth. Drop the student into the shared
+    // demo session. A BroadcastChannel/localStorage patch keeps the student
+    // board in step when the instructor demo changes the lead (the iframe is a
+    // separate JS heap, so the instructor store never reaches it on its own).
     if (IS_STUDENT_DEMO) {
       setUserName(DEMO_STUDENT_USER_NAME);
       setSessionCode(DEMO_SESSION_CODE);
-      setCurrentSession(freshDemoSession());
+      const applyPatch = (patch) => {
+        setCurrentSession(applyDemoSessionPatch(freshDemoSession(), patch));
+      };
+      applyPatch(readDemoSessionPatch());
       try { document.documentElement.classList.remove('std-restoring-session'); } catch (e) {}
       setAppState('app');
-      return;
+      const unsubPatch = subscribeDemoSessionPatch(applyPatch);
+      return () => { unsubPatch(); };
     }
 
     if (!db) {

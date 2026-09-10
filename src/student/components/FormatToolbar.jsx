@@ -1,12 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { buildEmojiIndex, filterEmojiChars } from '../../lib/emojiData.js';
+import {
+  emojiKeywordsReady,
+  filterEmojiChars,
+  getEmojiIndex,
+  loadEmojiKeywords,
+  subscribeEmojiKeywords,
+} from '../../lib/emojiData.js';
 
 /** Large Unicode emoji set (~750 emojis). System font renders each glyph. */
 const FORMAT_EMOJI_PICKER_RAW =
   "😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙🥲😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕😟🙁☹😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾👋🤚🖐✋🖖👌🤌🤏✌🤞🤟🤘🤙👈👉👆🖕👇☝👍👎✊👊🤛🤜👏🙌👐🤲🤝🙏✍💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🫀🫁🦷🦴👀👁👅👄❤🧡💛💚💙💜🖤🤍🤎💔❣💕💞💓💗💖💘💝💟☮✝☪🕉☸✡🔯🪄🪅🎴🎭🖼🎨🔮🧿🐵🐒🦍🦧🐶🐕🦮🐩🐺🦊🦝🐱🐈🦁🐯🐅🐆🐴🐎🦄🦓🦌🦬🐮🐂🐃🐄🐷🐖🐗🐽🐏🐑🐐🐪🐫🦙🦒🐘🦣🦏🦛🐭🐁🐀🐹🐰🐇🐿🦫🦔🦇🐻🐨🐼🐾🦃🐔🐓🐣🐤🐥🐦🐧🕊🦅🦆🦢🦉🦤🪶🦩🦚🦜🐸🐊🐢🦎🐍🐲🐉🦕🦖🐳🐋🐬🦭🐟🐠🐡🦈🐙🐚🪸🐌🦋🐛🐜🐝🪲🐞🦗🪳🕷🕸🦂🦟🪰🪱🦠💐🌸💮🌹🥀🌺🌻🌼🌷🪻🌱🪴🌲🌳🌴🌵🌾🌿☘🍀🍁🍂🍃🪹🪺🍄🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🍞🥐🥖🫓🥨🥯🥞🧇🧀🍖🍗🥩🥓🍔🍟🍕🌭🥪🌮🌯🫔🥙🧆🥚🍳🥘🍲🫕🥣🥗🍿🧈🧂🥫🍱🍘🍙🍚🍛🍜🍝🍠🍢🍣🍤🍥🥮🍡🥟🥠🥡🦀🦞🦐🦑🦪🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯🍼🥛☕🫖🍵🍶🍾🍷🍸🍹🍺🍻🥂🥃🥤🧋🧃🧉🧊🥢🍽🍴🥄🔪🫙🌍🌎🌏🌐🗺🧭🏔⛰🌋🗻🏕🏖🏜🏝🏞🏟🏛🏗🧱🪨🪵🛖🏘🏚🏠🏡🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🛕🕍⛩🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉♨🎠🛝🎡🎢💈🎪🚂🚃🚄🚅🚆🚇🚈🚉🚊🚝🚞🚋🚌🚍🚎🚐🚑🚒🚓🚔🚕🚖🚗🚘🚙🛻🚚🚛🚜🏎🏍🛵🦽🦼🛺🚲🛴🛹🛼🚏🛣🛤⛽🚨🚥🚦🛑🚧⚓🛟⛵🛶🚤🛳⛴🛥🚢✈🛩🛫🛬🪂💺🚁🚟🚠🚡🛰🚀🛸🪐🌠🌌⚽🏀🏈⚾🥎🎾🏐🏉🥏🎱🪀🏓🏸🏒🏑🥍🏏🪃🥅⛳🪁🏹🎣🤿🥊🥋🎽🛷⛸🥌🎿⛷🏂🏋🤼🤸🤺⛹🤹🧘🏌🏇🧗🚵🚴🏆🥇🥈🥉🏅🎖🏵🎗🎫🎟🩰🎬🎤🎧🎼🎹🥁🪘🎷🎺🎸🪕🎻🪈🎲♟🎯🎳🎮🕹🎰🧩📱📲☎📞📟📠🔋🪫🔌💻🖥🖨⌨🖱🖲💽💾💿📀🧮🎥🎞📽📺📷📸📹📼🔍🔎🕯💡🔦🏮🪔📔📕📖📗📘📙📚📓📒📃📜📄📰🗞📑🔖🏷💰🪙💴💵💶💷💸💳🧾✉📧📨📩📤📥📦📫📪📬📭📮🗳✏✒🖋🖊🖌🖍📝💼📁📂🗂📅📆🗒🗓📇📈📉📊📋📌📍📎🖇📏📐✂🗃🗄🗑🔒🔓🔏🔐🔑🗝🔨🪓⛏⚒🛠🗡⚔🔫🛡🔧🪛🔩⚙🗜⚖🦯🔗⛓🪝🧰🧲🪜💯💢💥💫💦💨🕳💬🗨🗯💭💤🔔🔕📣📢📿🏧🚮🚰♿🚹🚺🚻🚼🚾🛂🛃🛄🛅⚠🚸⛔🚫🚳🚭🚯🚱🚷📵🔞☢☣⬆↗➡↘⬇↙⬅↖↕↔↩↪⤴⤵🔃🔄🔙🔚🔛🔜🔝🛐⚛☯🕎♈♉♊♋♌♍♎♏♐♑♒♓⛎🔀🔁🔂▶⏩⏭⏯◀⏪⏮🔼⏫🔽⏬⏸⏹⏺⏏🎦🔅🔆📶📳📴♀♂⚧✖➕➖➗🟰♾‼⁉❓❔❕❗〰💱💲⚕♻❇✳❎🆎🆑🆘📛🔠🔡🔢🔣🔤⌚⏰⏱⏲🕰🕛🕧🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌝🌞⭐🌟☀🌤⛅🌥☁🌦🌧⛈🌩🌨❄☃⛄🌬🌪🌫🌈☂☔⛱⚡🔥💧🌊🎃🎄🎆🎇🧨✨🎈🎉🎊🎋🎍🎎🎏🎐🎑🧧🎀🎁🧸🪆🃏🀄";
 const EMOJI_CHARS = Array.from(FORMAT_EMOJI_PICKER_RAW);
-const EMOJI_INDEX = buildEmojiIndex(EMOJI_CHARS);
 
 /** Inline font so embedded hosts cannot strip emojis with button { font-family } !important. */
 const EMOJI_CELL_STYLE =
@@ -35,15 +40,52 @@ export default function FormatToolbar({ targetId, targetRef, onInsertFormat, onI
   const searchRef = useRef(null);
   const ioRef = useRef(null);
   const roRef = useRef(null);
+  // Every requestAnimationFrame id this component has scheduled and not yet run.
+  // Closing the picker within one frame (a double-click, fast toggling) used to
+  // let a pending callback build observers after cleanup had already run, leaving
+  // them connected with nothing left to disconnect them.
+  const rafIdsRef = useRef(new Set());
+  // positionPicker runs from rAF and observer callbacks that outlive the render
+  // that scheduled them, so it must read open state from a ref, not from a value
+  // captured at schedule time.
+  const pickerOpenRef = useRef(false);
   const [pickerStyle, setPickerStyle] = useState({});
   const [flipAbove, setFlipAbove] = useState(false);
   const [gridScrollState, setGridScrollState] = useState({ hasOverflow: false, atStart: true, atEnd: false });
 
-  const filteredEmojis = filterEmojiChars(EMOJI_CHARS, query, EMOJI_INDEX);
+  // The keyword data arrives from a dynamic import. Subscribing re-renders the
+  // filtered list the moment it lands, so a query typed during the fetch starts
+  // matching on its own instead of sitting on a stale empty result.
+  useSyncExternalStore(subscribeEmojiKeywords, emojiKeywordsReady);
+
+  const filteredEmojis = pickerOpen
+    ? filterEmojiChars(EMOJI_CHARS, query, getEmojiIndex(EMOJI_CHARS))
+    : [];
+
+  pickerOpenRef.current = pickerOpen;
+
+  /** Schedule a frame and remember its id so cleanup can cancel it. */
+  const scheduleFrame = useCallback((fn) => {
+    const id = requestAnimationFrame(() => {
+      rafIdsRef.current.delete(id);
+      fn();
+    });
+    rafIdsRef.current.add(id);
+    return id;
+  }, []);
+
+  /** Cancel every frame still pending. */
+  const cancelFrames = useCallback(() => {
+    rafIdsRef.current.forEach((id) => cancelAnimationFrame(id));
+    rafIdsRef.current.clear();
+  }, []);
+
+  // Cancel anything still scheduled when the toolbar itself goes away.
+  useEffect(() => cancelFrames, [cancelFrames]);
 
   // --- Position the picker panel ---
   function positionPicker() {
-    if (!pickerOpen || !summaryRef.current) return;
+    if (!pickerOpenRef.current || !summaryRef.current) return;
     const sum = summaryRef.current;
     const rect = sum.getBoundingClientRect();
     const gap = 8;
@@ -111,13 +153,14 @@ export default function FormatToolbar({ targetId, targetRef, onInsertFormat, onI
   useEffect(() => {
     if (!pickerOpen) {
       // Clean up observers
+      cancelFrames();
       if (ioRef.current) { ioRef.current.disconnect(); ioRef.current = null; }
       if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
       return;
     }
 
     // Position immediately after open
-    requestAnimationFrame(() => {
+    scheduleFrame(() => {
       positionPicker();
       // Focus the search field so people can just start typing. preventScroll
       // stops the browser from scrolling the page to the (portaled) input.
@@ -129,7 +172,7 @@ export default function FormatToolbar({ targetId, targetRef, onInsertFormat, onI
         const thresholds = [];
         for (let i = 0; i <= 20; i++) thresholds.push(i / 20);
         ioRef.current = new IntersectionObserver(
-          () => { requestAnimationFrame(positionPicker); },
+          () => { scheduleFrame(positionPicker); },
           { root: null, threshold: thresholds },
         );
         ioRef.current.observe(summaryRef.current);
@@ -146,7 +189,7 @@ export default function FormatToolbar({ targetId, targetRef, onInsertFormat, onI
     });
 
     // Scroll / resize repositioning
-    const scheduleRepos = () => requestAnimationFrame(positionPicker);
+    const scheduleRepos = () => scheduleFrame(positionPicker);
     const capOpts = { passive: true, capture: true };
     window.addEventListener('scroll', scheduleRepos, capOpts);
     document.addEventListener('scroll', scheduleRepos, capOpts);
@@ -181,6 +224,9 @@ export default function FormatToolbar({ targetId, targetRef, onInsertFormat, onI
       }
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('touchstart', onPointerDown, true);
+      // Cancel before disconnecting: a frame that runs after this point would
+      // build a fresh pair of observers that nothing else will ever clean up.
+      cancelFrames();
       if (ioRef.current) { ioRef.current.disconnect(); ioRef.current = null; }
       if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
     };
@@ -192,10 +238,21 @@ export default function FormatToolbar({ targetId, targetRef, onInsertFormat, onI
     if (!pickerOpen) setQuery('');
   }, [pickerOpen]);
 
+  // Start fetching keywords the moment the picker opens, well before anyone can
+  // finish typing a word. Repeated calls share one in-flight import, so the
+  // StrictMode double pass costs nothing.
+  useEffect(() => {
+    if (pickerOpen) loadEmojiKeywords();
+  }, [pickerOpen]);
+
   // Recompute overflow hints + reposition when the filtered result set changes.
   useEffect(() => {
     if (!pickerOpen) return;
-    requestAnimationFrame(() => {
+    // Not cancelled on query change: this frame only repositions and recomputes
+    // scroll hints, and cancelling here could kill the open effect's frame (the
+    // one that installs the observers) if a keystroke lands in the same frame.
+    // Closing the picker cancels it, via the open/close effect's cleanup.
+    scheduleFrame(() => {
       if (gridRef.current) gridRef.current.scrollTop = 0;
       positionPicker();
       updateScrollState();

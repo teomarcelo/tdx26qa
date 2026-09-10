@@ -77,8 +77,11 @@ Recommended options, most secure first:
    so it can stay on GitHub Pages / any static host. Point `VITE_APP_ORIGIN` at it
    for `/student`, but do **not** rely on that origin for `/instructor`.
 
-Until Phase 2 lands, treat the existing instructor **PIN** as the real instructor
-check and use this OAuth layer as the org-restriction gate on top.
+The Vite instructor app no longer uses a PIN. It authenticates with Firebase Auth
+Google sign-in and enforces access through `firestore.rules` (`ownerEmail` /
+`instructorEmails`), so that is the real instructor check. This OAuth layer is the
+org-restriction gate in front of it: it keeps the instructor surface reachable only
+by `@salesforce.com` accounts. Until Phase 2 lands, both checks are independent.
 
 ### 4. Local dev
 

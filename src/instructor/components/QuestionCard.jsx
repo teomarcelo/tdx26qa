@@ -8,6 +8,12 @@ import { formatQuestionWhen } from '../../lib/formatQuestionWhen.js';
 import { useFirebase } from '../../shared/FirebaseContext.jsx';
 import { ensureInstructorAuth } from '../../lib/auth.js';
 import useInstructorStore from '../store/useInstructorStore.js';
+import {
+  answerIdentity,
+  resolveAnswerIndex,
+  newAnswerId,
+  ANSWER_MATCH_AMBIGUOUS,
+} from '../lib/answerIdentity.js';
 import { myNameForSession } from '../hooks/useInstructorAuth.js';
 import AnswerBox from './AnswerBox.jsx';
 import SaveButton from './SaveButton.jsx';
@@ -34,6 +40,20 @@ function getQuestionAnswersArray(q) {
   return [];
 }
 
+// Thrown inside the answer transactions below and mapped to a message afterwards.
+const QUESTION_GONE = 'sqa/question-gone';
+const ANSWER_GONE = 'sqa/answer-gone';
+const ANSWER_AMBIGUOUS = 'sqa/answer-ambiguous';
+
+/**
+ * Map a resolveAnswerIndex() miss onto the error the transaction throws, so an
+ * identity that matches two indistinguishable replies refuses instead of picking
+ * one. See src/instructor/lib/answerIdentity.js for why either can happen.
+ */
+function answerMissError(reason) {
+  return new Error(reason === ANSWER_MATCH_AMBIGUOUS ? ANSWER_AMBIGUOUS : ANSWER_GONE);
+}
+
 export default function QuestionCard({ q, showToast }) {
   const { db } = useFirebase();
   const isDemoMode = useInstructorStore(s => s.isDemoMode);
@@ -42,6 +62,7 @@ export default function QuestionCard({ q, showToast }) {
   const allSessions = useInstructorStore(s => s.allSessions);
   const instructorOwnerId = useInstructorStore(s => s.instructorOwnerId);
   const instructorLegacyOwnerId = useInstructorStore(s => s.instructorLegacyOwnerId);
+  const instructorEmail = useInstructorStore(s => s.instructorEmail);
   const answerEditState = useInstructorStore(s => s.answerEditState);
   const setAnswerEditState = useInstructorStore(s => s.setAnswerEditState);
   const setAnswerDraft = useInstructorStore(s => s.setAnswerDraft);
@@ -80,7 +101,9 @@ export default function QuestionCard({ q, showToast }) {
   const beginEditAnswer = (index) => {
     const a = answers[index];
     if (!a) return;
-    setAnswerEditState({ qId: q.id, index });
+    // Remember WHICH answer is being edited, not just where it sat in the array:
+    // a co-instructor adding or removing a reply shifts every later index.
+    setAnswerEditState({ qId: q.id, index, identity: answerIdentity(a) });
     setAnswerDraft(q.id, a.text || '');
     setPendingAnswerImages(q.id, Array.isArray(a.imageUrls) ? [...a.imageUrls] : []);
     // Focus the textarea after render
@@ -96,6 +119,8 @@ export default function QuestionCard({ q, showToast }) {
     clearPendingAnswerImages(q.id);
   };
 
+  const questionRef = () => db.collection('sessions').doc(activeSessionCode).collection('questions').doc(q.id);
+
   const saveAnswer = async () => {
     const text = answerDraft;
     const imgs = pendingImages.length ? [...pendingImages] : [];
@@ -104,103 +129,178 @@ export default function QuestionCard({ q, showToast }) {
       return false;
     }
 
-    const currentIsEdit = !!(answerEditState && answerEditState.qId === q.id && answerEditState.index != null);
-    const wasEdit = currentIsEdit;
-    let updatedAnswers = [...answers];
+    const editState = (answerEditState && answerEditState.qId === q.id && answerEditState.index != null)
+      ? answerEditState
+      : null;
+    const wasEdit = !!editState;
+    const editIdentity = editState
+      ? (editState.identity || answerIdentity(answers[editState.index]))
+      : '';
 
     // Name to author under is per-session (the session's ownerName when owned).
     const activeSession = allSessions.find(s => s.id === activeSessionCode);
-    const myName = myNameForSession(activeSession, currentInstructor, instructorOwnerId, instructorLegacyOwnerId);
+    const myName = myNameForSession(activeSession, currentInstructor, {
+      ownerId: instructorOwnerId,
+      legacyOwnerId: instructorLegacyOwnerId,
+      email: instructorEmail,
+    });
+    const body = text.trim() || (imgs.length ? '(Image)' : '');
 
-    if (currentIsEdit) {
-      const idx = answerEditState.index;
-      if (idx < 0 || idx >= updatedAnswers.length) return false;
-      const prev = updatedAnswers[idx];
+    // Minted once, not inside the transaction: the callback can run more than once
+    // and every attempt writes the same reply, so it must not get a different id.
+    const freshId = newAnswerId();
+
+    // `prev` is the answer being replaced (edit) or null (new reply): an edit keeps
+    // the original author so correcting someone else's reply does not reattribute it,
+    // and keeps its id so later edits still resolve to it. An edit of a pre-id reply
+    // is where that reply picks one up.
+    const buildAnswer = (prev) => {
       const next = {
-        instructor: prev.instructor || myName,
-        text: text.trim() || (imgs.length ? '(Image)' : ''),
+        id: (prev && prev.id) ? String(prev.id) : freshId,
+        instructor: (prev && prev.instructor) || myName,
+        text: body,
         ts: new Date().toISOString(),
       };
       if (imgs.length) next.imageUrls = imgs;
-      updatedAnswers = [...updatedAnswers];
-      updatedAnswers[idx] = next;
-      setAnswerEditState(null);
-    } else {
-      const newAnswer = {
-        instructor: myName,
-        text: text.trim() || (imgs.length ? '(Image)' : ''),
-        ts: new Date().toISOString(),
-      };
-      if (imgs.length) newAnswer.imageUrls = imgs;
-      updatedAnswers.push(newAnswer);
-    }
+      return next;
+    };
 
-    clearPendingAnswerImages(q.id);
+    const finishSuccess = () => {
+      setAnswerEditState(null);
+      clearAnswerDraft(q.id);
+      clearPendingAnswerImages(q.id);
+      toast(wasEdit ? 'Answer updated.' : 'Answer saved!');
+    };
 
     if (isDemoMode) {
+      const updatedAnswers = [...answers];
+      if (wasEdit) {
+        const idx = editState.index;
+        if (idx < 0 || idx >= updatedAnswers.length) return false;
+        updatedAnswers[idx] = buildAnswer(updatedAnswers[idx]);
+      } else {
+        updatedAnswers.push(buildAnswer(null));
+      }
       updateQuestionInPages(q.id, (qItem) => ({
         ...qItem,
         answers: updatedAnswers,
         answer: '',
         status: 'answered',
       }));
-      clearAnswerDraft(q.id);
-      toast(wasEdit ? 'Answer updated.' : 'Answer saved!');
+      finishSuccess();
       return true;
     }
 
     if (!db) { toast('Firebase not available.'); return false; }
     if (!(await requireInstructorAuth())) return false;
     try {
-      await db.collection('sessions').doc(activeSessionCode).collection('questions').doc(q.id).update({
-        answers: updatedAnswers,
-        answer: '',
-        status: 'answered',
+      // Firestore transaction: the answers array is re-read here, so a reply a
+      // co-instructor added since this card rendered survives the write instead of
+      // being overwritten by our stale copy. The callback may run more than once,
+      // so the merged array is rebuilt from the server copy on every attempt.
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(questionRef());
+        if (!snap.exists) throw new Error(QUESTION_GONE);
+        const server = getQuestionAnswersArray(snap.data() || {});
+        let merged;
+        if (wasEdit) {
+          const found = resolveAnswerIndex(server, editIdentity);
+          if (found.index == null) throw answerMissError(found.reason);
+          merged = [...server];
+          merged[found.index] = buildAnswer(server[found.index]);
+        } else {
+          merged = [...server, buildAnswer(null)];
+        }
+        tx.update(snap.ref, { answers: merged, answer: '', status: 'answered' });
       });
-      clearAnswerDraft(q.id);
-      toast(wasEdit ? 'Answer updated.' : 'Answer saved!');
+      finishSuccess();
       return true;
     } catch (e) {
-      toast('Error saving answer: ' + e.message);
+      if (e && e.message === QUESTION_GONE) {
+        toast('That question was deleted, so the answer was not saved.');
+        return false;
+      }
+      if (e && e.message === ANSWER_GONE) {
+        toast('Another instructor changed or removed that reply. Your text is still here — cancel the edit and post it as a new reply.');
+        return false;
+      }
+      if (e && e.message === ANSWER_AMBIGUOUS) {
+        toast('Two replies here are identical, so this edit could land on the wrong one. Nothing was saved — cancel the edit and post it as a new reply.');
+        return false;
+      }
+      console.warn('Save answer failed:', e);
+      toast('Error saving answer: ' + (e && e.message ? e.message : 'unknown error'));
       return false;
     }
   };
 
   const deleteAnswer = async (index) => {
-    let updatedAnswers = [...answers];
-    // Adjust edit state if deleting an answer being edited or before it
-    const curEdit = useInstructorStore.getState().answerEditState;
-    if (curEdit && curEdit.qId === q.id) {
+    const target = answers[index];
+    if (!target) return;
+    const targetIdentity = answerIdentity(target);
+
+    // Keep the answer being edited pointing at the same reply after the array shrinks.
+    const settleEditState = () => {
+      const curEdit = useInstructorStore.getState().answerEditState;
+      if (!curEdit || curEdit.qId !== q.id) return;
       if (curEdit.index === index) {
         setAnswerEditState(null);
         clearAnswerDraft(q.id);
         clearPendingAnswerImages(q.id);
       } else if (curEdit.index > index) {
-        setAnswerEditState({ qId: q.id, index: curEdit.index - 1 });
+        setAnswerEditState({ ...curEdit, index: curEdit.index - 1 });
       }
-    }
-    updatedAnswers.splice(index, 1);
-    const status = updatedAnswers.length ? 'answered' : 'pending';
+    };
 
     if (isDemoMode) {
+      const updatedAnswers = answers.filter((_, i) => i !== index);
+      const status = updatedAnswers.length ? 'answered' : 'pending';
       updateQuestionInPages(q.id, (qItem) => {
         const updated = { ...qItem, answers: updatedAnswers, answer: '', status };
         if (status === 'pending') delete updated.answeredVerbally;
         return updated;
       });
+      settleEditState();
       toast('Answer removed.');
       return;
     }
 
-    const patch = { answers: updatedAnswers, answer: '', status };
-    if (status === 'pending') patch.answeredVerbally = false;
     if (!db) { toast('Firebase not available.'); return; }
     if (!(await requireInstructorAuth())) return;
     try {
-      await db.collection('sessions').doc(activeSessionCode).collection('questions').doc(q.id).update(patch);
+      // Firestore transaction: the reply to remove is located by identity in the
+      // freshly-read array. Deleting by the rendered array index instead would take
+      // out whichever answer had moved into that slot — including one this
+      // instructor never saw, because older pages are not refreshed live.
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(questionRef());
+        if (!snap.exists) throw new Error(QUESTION_GONE);
+        const server = getQuestionAnswersArray(snap.data() || {});
+        const found = resolveAnswerIndex(server, targetIdentity);
+        if (found.index == null) throw answerMissError(found.reason);
+        const merged = server.filter((_, k) => k !== found.index);
+        const status = merged.length ? 'answered' : 'pending';
+        const patch = { answers: merged, answer: '', status };
+        if (status === 'pending') patch.answeredVerbally = false;
+        tx.update(snap.ref, patch);
+      });
+      settleEditState();
       toast('Answer removed.');
     } catch (e) {
-      toast('Error removing answer: ' + e.message);
+      if (e && e.message === QUESTION_GONE) {
+        toast('That question has already been deleted.');
+        return;
+      }
+      if (e && e.message === ANSWER_GONE) {
+        toast('That reply was already removed by another instructor.');
+        return;
+      }
+      if (e && e.message === ANSWER_AMBIGUOUS) {
+        toast('Two replies here are identical, so this could remove a co-instructor\u2019s. Nothing was removed — post a corrected reply instead.');
+        return;
+      }
+      console.warn('Remove answer failed:', e);
+      toast('Error removing answer: ' + (e && e.message ? e.message : 'unknown error'));
     }
   };
 

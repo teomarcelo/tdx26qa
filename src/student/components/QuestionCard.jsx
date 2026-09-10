@@ -49,25 +49,39 @@ export default function QuestionCard({ question: q, userId, sessionCode, isLocke
     String(rawText).trim() &&
     !isImageOnlyPlaceholderText(rawText);
 
-  // Build answers list (multi-answer or legacy single-answer)
+  // Build answers list (multi-answer or legacy single-answer).
+  //
+  // The status gate applies ONLY to the legacy singular `answer` string, because
+  // that is the only forgeable answer field: it sits in the question-create
+  // allowlist, so a student could ship a new question carrying text that renders
+  // under an "Instructor" label. The plural `answers` array is not in that
+  // allowlist and cannot be forged, so it renders whatever its status — which
+  // keeps a real instructor answer visible after "Mark as pending".
+  //
+  // Requiring 'answered' is enough to kill the forgery: create pins status to
+  // 'pending', and a student's only update path is hasOnly(['text','imageUrls']),
+  // so they can never flip status. No instructor path has ever written this
+  // field — every one of them writes `answers` and sets `answer: ''` in the
+  // same update.
+  const isAnswered = q.status === 'answered';
   const answers =
     q.answers && q.answers.length
       ? q.answers
-      : q.answer
+      : isAnswered && q.answer
       ? [{ instructor: 'Instructor', text: q.answer, imageUrls: q.answerImageUrls }]
       : [];
 
   // Badges HTML (returned as HTML string, safe because esc() is applied inside)
   let badgesHtml = '';
   if (q.pinned) badgesHtml += '<span class="q-badge badge-pinned">Pinned</span>';
-  if (q.status === 'answered') {
+  if (isAnswered) {
     badgesHtml += htmlAnsweredStatusBadges(q);
   } else {
     badgesHtml += '<span class="q-badge badge-pending">Pending</span>';
   }
 
   return (
-    <div className={`q-card${q.pinned ? ' pinned' : ''}${q.status === 'answered' ? ' answered' : ''}`}>
+    <div className={`q-card${q.pinned ? ' pinned' : ''}${isAnswered ? ' answered' : ''}`}>
       <div className="q-card-header">
         <div className="q-meta">
           <span className="q-author">{q.authorName || 'Anonymous'}</span>

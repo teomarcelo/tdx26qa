@@ -14,7 +14,11 @@ export default function FeedbackModal({ sessionCode, onClose, showToast, isDemoM
   const addDemoFeedback = useStudentDemoStore((s) => s.addFeedback);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
   const subjectRef = useRef(null);
+  // Guards the write itself. State alone is too slow: two clicks in the same tick
+  // both read `sending === false` and both write a feedback document.
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     function onKey(e) {
@@ -30,6 +34,7 @@ export default function FeedbackModal({ sessionCode, onClose, showToast, isDemoM
   }, []);
 
   async function handleSubmit() {
+    if (sendingRef.current) return;
     const sub = subject.trim();
     const msg = body.trim();
     if (!sub) { showToast('Please enter a subject.'); return; }
@@ -64,6 +69,8 @@ export default function FeedbackModal({ sessionCode, onClose, showToast, isDemoM
       submittedAtMs: Math.floor(Date.now()),
     };
 
+    sendingRef.current = true;
+    setSending(true);
     try {
       // Ensure the anonymous identity so the write carries a Firebase token
       // (required once rules enforce request.auth != null).
@@ -81,6 +88,10 @@ export default function FeedbackModal({ sessionCode, onClose, showToast, isDemoM
         console.warn('Send feedback failed:', e);
         showToast('Could not send your feedback. Try again.');
       }
+      // Released only on failure: after a success the modal is closing, and
+      // clearing the guard here would reopen the double-write window.
+      sendingRef.current = false;
+      setSending(false);
     }
   }
 
@@ -123,7 +134,9 @@ export default function FeedbackModal({ sessionCode, onClose, showToast, isDemoM
         </div>
         <div className="modal-footer">
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-submit" onClick={handleSubmit}>Send feedback</button>
+          <button type="button" className="btn-submit" disabled={sending} onClick={handleSubmit}>
+            {sending ? 'Sending…' : 'Send feedback'}
+          </button>
         </div>
       </div>
     </div>

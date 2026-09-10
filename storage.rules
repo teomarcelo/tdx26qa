@@ -27,11 +27,18 @@ service firebase.storage {
     }
 
     // A verified salesforce.com instructor (same test as firestore.rules).
+    //
+    // Read the claims with a default rather than by property access. Anonymous
+    // students carry neither `email_verified` nor `email`, and a bare property
+    // access on a missing claim raises an evaluation error instead of cleanly
+    // evaluating to false. The request still ends up denied, but by an
+    // exception rather than a boolean — fragile, and it litters the emulator
+    // log with EvaluationException on every anonymous upload.
     function isSalesforce() {
       return isSignedIn()
-        && request.auth.token.email_verified == true
-        && request.auth.token.email is string
-        && request.auth.token.email.lower().matches('^[^@]+@salesforce[.]com$');
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '') is string
+        && request.auth.token.get('email', '').lower().matches('^[^@]+@salesforce[.]com$');
     }
 
     // An upload of an acceptably small JPEG. Event-scale images are resized

@@ -126,5 +126,23 @@ test('images remain publicly readable (students load them without a login)', asy
   await assertSucceeds(unauthed().ref('sessions/SQA-READ/images/note.jpg').getDownloadURL());
 });
 
+test('instructor-only paths deny anonymous callers without an evaluation error', async () => {
+  // Anonymous students carry no `email_verified` / `email` claim. Reading those
+  // claims by property access raised `EvaluationException: Property
+  // email_verified is undefined on object` on every anonymous upload: the
+  // request was denied by an evaluation error rather than a clean false, which
+  // is one refactor away from behaving differently. isSalesforce() now reads
+  // both claims via token.get(..., default), matching firestore.rules.
+  await assertFails(put(anon('stud1'), 'sessions/SQA-CLAIM/answer_paste/x.jpg'));
+  await assertFails(put(anon('stud1'), 'sessions/SQA-CLAIM/images/x.jpg'));
+  // A signed-in caller with an email but no email_verified claim at all.
+  const noVerifiedClaim = testEnv
+    .authenticatedContext('inst8', { email: SF_EMAIL })
+    .storage();
+  await assertFails(put(noVerifiedClaim, 'sessions/SQA-CLAIM/answer_paste/x.jpg'));
+  // The happy path is unchanged.
+  await assertSucceeds(put(salesforce(), 'sessions/SQA-CLAIM/answer_paste/ok.jpg'));
+});
+
 // Keep node:test from reporting "no assertions" if the rules file fails to load.
 assert.ok(RULES.includes('service firebase.storage'));

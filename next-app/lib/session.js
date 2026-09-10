@@ -22,13 +22,18 @@ export function getSessionOptions() {
 }
 
 /**
- * Returns the iron-session backed by Next's cookie store.
- * This is the reliable App Router pattern for route handlers and server
- * components: save()/destroy() persist through the cookies() store rather than
- * a NextResponse object (which does not reliably write the session cookie).
+ * Returns the iron-session backed by Next's cookie store, so save()/destroy()
+ * persist through that store rather than a NextResponse object.
+ *
+ * cookies() must be awaited: since Next 16 it returns a Promise, and
+ * iron-session calls .get() on whatever it is handed synchronously, so passing
+ * the Promise throws "TypeError: e.get is not a function" on every call.
+ *
+ * proxy.js deliberately uses the getIronSession(request, response, options)
+ * overload instead — it reads cookies off the request headers and is unaffected.
  */
 export async function getSession() {
-  return getIronSession(cookies(), getSessionOptions());
+  return getIronSession(await cookies(), getSessionOptions());
 }
 
 /**

@@ -36,6 +36,24 @@ function splitUrlTail(url) {
   return { core, tail };
 }
 
+/**
+ * Emphasis delimiters, deliberately conservative.
+ *
+ * `_` may not be flanked by word characters (the CommonMark / Slack rule), so
+ * Salesforce API names such as Custom_Field__c and Owner_Id__c survive verbatim
+ * instead of rendering as Custom<em>Field</em>_c. Every delimiter must also hug
+ * non-space text on both sides and stay on one line, so arithmetic ("5 * 3") and
+ * a stray asterisk at the end of a line are read as prose, not markup.
+ *
+ * These run after esc(), so the subject string already contains HTML entities
+ * and the extracted-chunk sentinels; none of those are word characters, and no
+ * pattern here can produce a tag or an attribute.
+ */
+const BOLD_DOUBLE_RE = /\*\*([^*\n\s](?:[^*\n]*[^*\n\s])?)\*\*/g;
+const BOLD_RE = /\*([^*\n\s](?:[^*\n]*[^*\n\s])?)\*/g;
+const ITALIC_RE = /(^|[^A-Za-z0-9_])_([^_\n]+)_(?![A-Za-z0-9_])/g;
+const STRIKE_RE = /~([^~\n\s](?:[^~\n]*[^~\n\s])?)~/g;
+
 /** Slack-style: *bold*, _italic_, ~strike~, `inline code`, fenced ``` blocks, [label](url) links. */
 export function formatRichMessage(raw) {
   const PH = '\uFFF0';
@@ -94,9 +112,10 @@ export function formatRichMessage(raw) {
     chunks.push(linkify(core));
     return PH + 'R' + i + PH2 + tail;
   });
-  s = s.replace(/\*(?!\*)([\s\S]*?)\*(?!\*)/g, '<strong>$1</strong>');
-  s = s.replace(/_([^_\n]+)_/g, '<em>$1</em>');
-  s = s.replace(/~([^~\n]+)~/g, '<del>$1</del>');
+  s = s.replace(BOLD_DOUBLE_RE, '<strong>$1</strong>');
+  s = s.replace(BOLD_RE, '<strong>$1</strong>');
+  s = s.replace(ITALIC_RE, '$1<em>$2</em>');
+  s = s.replace(STRIKE_RE, '<del>$1</del>');
   s = s.replace(/\uFFF0R(\d+)\uFFF1/g, (_m, n) => chunks[parseInt(n, 10)] || '');
   return s;
 }
@@ -111,9 +130,12 @@ export function richSourceToPlainText(raw) {
   s = s.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, (_m, code) => String(code).replace(/\n+$/, ''));
   s = s.replace(/`([^`\n]+)`/g, '$1');
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1 ($2)');
-  s = s.replace(/\*(?!\*)([\s\S]*?)\*(?!\*)/g, '$1');
-  s = s.replace(/_([^_\n]+)_/g, '$1');
-  s = s.replace(/~([^~\n]+)~/g, '$1');
+  // Same delimiter rules as the renderer, so copied text and rendered text agree
+  // on what was markup: an API name that stays intact on screen stays intact here.
+  s = s.replace(BOLD_DOUBLE_RE, '$1');
+  s = s.replace(BOLD_RE, '$1');
+  s = s.replace(ITALIC_RE, '$1$2');
+  s = s.replace(STRIKE_RE, '$1');
   return s.trim();
 }
 

@@ -16,6 +16,7 @@ import useInstructorStore from '../store/useInstructorStore.js';
 import { useInstructorAuth, resetDemoData, myNameForSession, instructorOwnsSession } from '../hooks/useInstructorAuth.js';
 import { useSessionStats } from '../hooks/useSessionStats.js';
 import { getSessionNotesFromDoc } from '../../lib/sessionNotes.js';
+import { notesDraftIsDirty } from '../lib/sessionNotesDraft.js';
 import { extractImageUrlForQuestionPaste } from '../../lib/clipboardImagePaste.js';
 import { insertEmoji } from './FormatToolbar.jsx';
 import InstructorSidebar from './sidebar/InstructorSidebar.jsx';
@@ -26,9 +27,65 @@ import CreateSessionModal from './CreateSessionModal.jsx';
 import DeleteModal from './DeleteModal.jsx';
 import ImageLightbox from '../../shared/ImageLightbox.jsx';
 
+// ── Gateway sign-out URL ───────────────────────────────────────
+// The origins this app may send the TOP window to on sign-out: itself, plus
+// whoever framed it (the OAuth gateway serves the instructor app in an iframe).
+// Both come from the browser rather than from the query string, so neither can be
+// forged by a crafted link.
+function allowedSignOutOrigins() {
+  const allowed = new Set([window.location.origin]);
+  try {
+    const ancestors = window.location.ancestorOrigins;
+    if (ancestors && typeof ancestors.length === 'number') {
+      for (let i = 0; i < ancestors.length; i++) {
+        if (ancestors[i] && ancestors[i] !== 'null') allowed.add(ancestors[i]);
+      }
+    }
+  } catch (e) { /* ancestorOrigins is not available in every browser */ }
+  // Firefox has no ancestorOrigins; when framed, the document referrer is the
+  // embedding page, which is the same browser-supplied signal.
+  try {
+    if (window.top !== window.self && document.referrer) {
+      allowed.add(new URL(document.referrer).origin);
+    }
+  } catch (e) { /* cross-origin top access or an unparseable referrer */ }
+  return allowed;
+}
+
+/**
+ * Validate the ?sso_logout value before it is assigned to a real location.
+ *
+ * The only legitimate producer is the gateway (next-app), which emits its own
+ * absolute /api/auth/logout URL. Anyone can send an instructor a link carrying a
+ * different value, and this lands on a raw DOM assignment where React's URL
+ * sanitizer never runs: a `javascript:` value would execute in this origin, and any
+ * other https origin is an open redirect fired exactly when the instructor expects
+ * a re-authentication prompt. Returns '' for anything not on an allowed origin, and
+ * the caller then stays put (sign-out has already cleared the local session).
+ */
+function resolveGatewaySignOutUrl(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return '';
+  let url;
+  try {
+    url = new URL(raw, window.location.origin);
+  } catch (e) {
+    return '';
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+  if (!allowedSignOutOrigins().has(url.origin)) return '';
+  return url.href;
+}
+
 // ── Emoji picker layout (vanilla JS) ──────────────────────────
+// Returns a teardown function: EVERY listener registered here must be removable.
+// The Dashboard unmounts whenever the verified instructor identity drops (sign out,
+// account switch, a permissions error), and a second mount used to stack a second
+// set of these listeners — one emoji click then inserted the character twice, and
+// keyboard insertion went quadratic because the Enter handler synthesises a click.
 function initEmojiPickerLayout() {
   let rafRe = 0;
+  let rafToggle = 0;
   function scheduleReposition() {
     cancelAnimationFrame(rafRe);
     rafRe = requestAnimationFrame(() => {
@@ -117,14 +174,15 @@ function initEmojiPickerLayout() {
     grid.scrollTop = 0;
   }
 
-  document.addEventListener('toggle', (e) => {
+  const onDetailsToggle = (e) => {
     const t = e.target;
     if (!t || !t.matches || !t.matches('details.fmt-emoji-more')) return;
     if (!t.open) {
       clearDock(t);
       return;
     }
-    requestAnimationFrame(() => {
+    cancelAnimationFrame(rafToggle);
+    rafToggle = requestAnimationFrame(() => {
       // Move shell to body for proper z-index stacking
       const grid = t.querySelector('.fmt-emoji-grid');
       if (grid) {
@@ -150,11 +208,11 @@ function initEmojiPickerLayout() {
         if (input) { try { input.focus({ preventScroll: true }); } catch (err) {} }
       }
     });
-  }, true);
+  };
 
   // Cells are moved to document.body (outside React's tree), so their clicks are
   // handled here rather than via React onClick.
-  document.addEventListener('click', (e) => {
+  const onCellClick = (e) => {
     const cell = e.target && e.target.closest && e.target.closest('.fmt-emoji-picker-cell[data-emoji-target]');
     if (!cell) return;
     e.preventDefault();
@@ -164,19 +222,19 @@ function initEmojiPickerLayout() {
     const shell = cell.closest('.fmt-emoji-grid-shell');
     const det = shell && shell._fmtEmojiDetails;
     if (det) det.open = false;
-  });
+  };
 
   // Live filter as the instructor types in a picker's search field.
-  document.addEventListener('input', (e) => {
+  const onSearchInput = (e) => {
     const input = e.target;
     if (!input || !input.classList || !input.classList.contains('fmt-emoji-search-input')) return;
     const shell = input.closest('.fmt-emoji-grid-shell');
     filterShell(shell, input.value);
     scheduleReposition();
-  });
+  };
 
   // Enter inserts the first match; Esc clears the query before closing.
-  document.addEventListener('keydown', (e) => {
+  const onSearchKeyDown = (e) => {
     const input = e.target;
     if (!input || !input.classList || !input.classList.contains('fmt-emoji-search-input')) return;
     const shell = input.closest('.fmt-emoji-grid-shell');
@@ -190,12 +248,28 @@ function initEmojiPickerLayout() {
       input.value = '';
       filterShell(shell, '');
     }
-  }, true);
+  };
 
   const cap = { passive: true, capture: true };
+  document.addEventListener('toggle', onDetailsToggle, true);
+  document.addEventListener('click', onCellClick);
+  document.addEventListener('input', onSearchInput);
+  document.addEventListener('keydown', onSearchKeyDown, true);
   window.addEventListener('scroll', scheduleReposition, cap);
   document.addEventListener('scroll', scheduleReposition, cap);
   window.addEventListener('resize', scheduleReposition);
+
+  return function teardownEmojiPickerLayout() {
+    cancelAnimationFrame(rafRe);
+    cancelAnimationFrame(rafToggle);
+    document.removeEventListener('toggle', onDetailsToggle, true);
+    document.removeEventListener('click', onCellClick);
+    document.removeEventListener('input', onSearchInput);
+    document.removeEventListener('keydown', onSearchKeyDown, true);
+    window.removeEventListener('scroll', scheduleReposition, cap);
+    document.removeEventListener('scroll', scheduleReposition, cap);
+    window.removeEventListener('resize', scheduleReposition);
+  };
 }
 
 // ── Image paste helpers ────────────────────────────────────────
@@ -286,6 +360,7 @@ function DashboardInner() {
   const currentInstructor = useInstructorStore(s => s.currentInstructor);
   const instructorOwnerId = useInstructorStore(s => s.instructorOwnerId);
   const instructorLegacyOwnerId = useInstructorStore(s => s.instructorLegacyOwnerId);
+  const instructorEmail = useInstructorStore(s => s.instructorEmail);
   const isDemoMode = useInstructorStore(s => s.isDemoMode);
   const activeSessionCode = useInstructorStore(s => s.activeSessionCode);
   const allSessions = useInstructorStore(s => s.allSessions);
@@ -295,19 +370,23 @@ function DashboardInner() {
   const showToast = useInstructorStore(s => s.showToast);
   const questionPages = useInstructorStore(s => s.questionPages);
   const setSessionNotesDraft = useInstructorStore(s => s.setSessionNotesDraft);
+  const setSessionNotesBase = useInstructorStore(s => s.setSessionNotesBase);
   const setSessionNoteShow = useInstructorStore(s => s.setSessionNoteShow);
   const setPendingAnswerImages = useInstructorStore(s => s.setPendingAnswerImages);
   const closeDeleteModal = useInstructorStore(s => s.closeDeleteModal);
   const setJoinSessionModalOpen = useInstructorStore(s => s.setJoinSessionModalOpen);
   const setCreateSessionModalOpen = useInstructorStore(s => s.setCreateSessionModalOpen);
 
-  const emojiInitRef = useRef(false);
+  // Which session the notes draft was last hydrated from, so a snapshot for the
+  // SAME session cannot silently reload the form over unsaved edits.
+  const lastNotesHydrationRef = useRef(null);
 
-  // Init emoji picker layout once
+  // Init emoji picker layout. No mount guard: the guard used to be a useRef, which
+  // is recreated on every mount, so it never prevented a second listener set — it
+  // only broke the picker under StrictMode's double effect pass. Correct teardown
+  // below is what makes remounting safe.
   useEffect(() => {
-    if (emojiInitRef.current) return;
-    emojiInitRef.current = true;
-    initEmojiPickerLayout();
+    const teardownEmojiLayout = initEmojiPickerLayout();
 
     // Close emoji pickers on outside click
     const closePickersIfOutside = (e) => {
@@ -322,6 +401,12 @@ function DashboardInner() {
     };
     document.addEventListener('pointerdown', closePickersIfOutside, true);
     document.addEventListener('touchstart', closePickersIfOutside, { capture: true, passive: true });
+
+    return () => {
+      teardownEmojiLayout();
+      document.removeEventListener('pointerdown', closePickersIfOutside, true);
+      document.removeEventListener('touchstart', closePickersIfOutside, { capture: true });
+    };
   }, []);
 
   // Global escape handler
@@ -426,9 +511,23 @@ function DashboardInner() {
 
   // When active session changes: hydrate session notes draft
   useEffect(() => {
-    if (!activeSessionCode) return;
+    if (!activeSessionCode) {
+      lastNotesHydrationRef.current = null;
+      return;
+    }
     const s = allSessions.find(x => x.id === activeSessionCode);
     if (!s) return;
+    // allSessions is driven by a live onSnapshot, so ANY remote write to this
+    // session document lands here — including a co-instructor joining, which
+    // rewrites instructors/instructorEmails and has nothing to do with notes.
+    // Re-hydrating then wiped whatever the instructor was typing and cleared the
+    // "Unsaved changes" badge as though it had saved. Unsaved edits therefore win
+    // until they save or switch sessions; the save path re-reads and merges the
+    // remote array, so the co-instructor's change is not lost by waiting.
+    const switchingSession = lastNotesHydrationRef.current !== activeSessionCode;
+    const state = useInstructorStore.getState();
+    if (!switchingSession && notesDraftIsDirty(s, state.sessionNotesDraft, state.sessionNoteShow)) return;
+    lastNotesHydrationRef.current = activeSessionCode;
     const arr = getSessionNotesFromDoc(s);
     // Preserve the instructor's manual expand/collapse per note across re-hydrations
     // (e.g. after Save, which updates allSessions). Only fall back to the default
@@ -445,7 +544,10 @@ function DashboardInner() {
         : (arr.length > 1 ? i !== arr.length - 1 : false),
     })));
     setSessionNoteShow(s.sessionNoteShow !== false);
-  }, [activeSessionCode, allSessions, setSessionNotesDraft, setSessionNoteShow]);
+    // Remember what the draft was hydrated from: the save transaction uses it as the
+    // common ancestor when merging against a co-instructor's notes.
+    setSessionNotesBase(arr);
+  }, [activeSessionCode, allSessions, setSessionNotesDraft, setSessionNoteShow, setSessionNotesBase]);
 
   // Trigger stats refresh when questions change. updateStats/cancelPending are
   // useCallback'd over a memoized `db`, so they are stable and do not re-fire
@@ -459,37 +561,57 @@ function DashboardInner() {
   // buttons (top bar here + the student-view overlay) so they never drift.
   const handleResetDemo = () => resetDemoData();
 
-  const copyCode = () => {
+  const copyCode = async () => {
     if (!activeSessionCode) return;
-    navigator.clipboard.writeText(activeSessionCode).then(() => showToast('Code copied!'));
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        throw new Error('Clipboard API unavailable');
+      }
+      await navigator.clipboard.writeText(activeSessionCode);
+      showToast('Code copied!');
+    } catch (e) {
+      // Denied clipboard permission, an insecure context, or an iframe without
+      // clipboard-write used to fail silently and leave the instructor believing the
+      // code was on their clipboard.
+      console.warn('Copy session code failed:', e);
+      showToast(`Could not copy automatically. The code is ${activeSessionCode}.`);
+    }
   };
 
   // Full sign-out: clear the in-app session, then (when embedded behind the OAuth
   // gateway) navigate the TOP window to the gateway logout so the Google/app session
   // cookie is destroyed and the user lands back on /login.
-  const handleSignOut = () => {
-    logout();
-    let logoutUrl = '';
+  const handleSignOut = async () => {
+    let rawLogout = '';
     try {
-      logoutUrl = (new URLSearchParams(window.location.search).get('sso_logout') || '').trim();
+      rawLogout = new URLSearchParams(window.location.search).get('sso_logout') || '';
     } catch (e) { /* malformed query string: treat as no gateway logout */ }
-    if (logoutUrl) {
-      try {
-        window.top.location.href = logoutUrl;
-        return;
-      } catch (e) {
-        window.location.href = logoutUrl;
-        return;
-      }
+    const logoutUrl = resolveGatewaySignOutUrl(rawLogout);
+    if (rawLogout.trim() && !logoutUrl) {
+      // Ignore it and stay on this origin: the local session is cleared below, so the
+      // instructor lands back on the sign-in screen either way.
+      console.warn('Ignoring sso_logout: not an http(s) URL on this origin or the embedding origin.');
+    }
+
+    // Destroy the Firebase session BEFORE leaving the page, so the token is already
+    // invalid by the time anything else runs.
+    await logout();
+
+    if (!logoutUrl) return;
+    try {
+      window.top.location.href = logoutUrl;
+    } catch (e) {
+      window.location.href = logoutUrl;
     }
   };
 
   // Names are per-session: when a session you own is active, the top-bar name is
   // that session's name; otherwise it's your default (used for new sessions).
   const activeSession = allSessions.find(s => s.id === activeSessionCode);
-  const ownsActive = instructorOwnsSession(activeSession, instructorOwnerId, instructorLegacyOwnerId);
+  const me = { ownerId: instructorOwnerId, legacyOwnerId: instructorLegacyOwnerId, email: instructorEmail };
+  const ownsActive = instructorOwnsSession(activeSession, me);
   const nameIsSessionScoped = !!activeSession && ownsActive;
-  const displayNameShown = myNameForSession(activeSession, currentInstructor, instructorOwnerId, instructorLegacyOwnerId);
+  const displayNameShown = myNameForSession(activeSession, currentInstructor, me);
 
   const startEditName = () => {
     setNameDraft(displayNameShown || '');
@@ -503,11 +625,13 @@ function DashboardInner() {
     setSavingName(true);
     if (nameIsSessionScoped) {
       showToast('Updating your name for this session…');
-      const err = await renameInSession(activeSession.id, draft);
+      // null = renamed everywhere, { error } = nothing was renamed,
+      // { warning } = the session was renamed but past replies were not.
+      const res = await renameInSession(activeSession.id, draft);
       setSavingName(false);
-      if (err) { showToast(err); return; }
+      if (res && res.error) { showToast(res.error); return; }
       setEditingName(false);
-      showToast('Name updated for this session.');
+      showToast(res && res.warning ? res.warning : 'Name updated for this session.');
     } else {
       const err = setGlobalDisplayName(draft);
       setSavingName(false);

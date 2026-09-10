@@ -4,8 +4,10 @@
     --surface2: #f0ede8;
     --border: #e2ddd6;
     --text: #1a1814;
-    --text-muted: #7a7570;
-    --text-light: #b0aba4;
+    /* Both pass WCAG AA on white and on the cream --bg. Keep in sync with
+       student.css: the two token sets are meant to be identical. */
+    --text-muted: #6e6a65;
+    --text-light: #6b6660;
     --accent: #0070d2;
     --accent-light: #e8f2fc;
     --accent-hover: #005fb2;
@@ -533,6 +535,16 @@
     padding: 0.45rem 0.75rem; font-size: 0.85rem;
   }
   .instructor-chip-name { font-weight: 500; }
+  .instructor-chip-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+  .instructor-lead-btn {
+    font-family: inherit; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--accent); background: var(--surface);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 0.12rem 0.5rem;
+    cursor: pointer; white-space: nowrap; line-height: 1.2;
+  }
+  .instructor-lead-btn:hover { background: var(--accent); color: #fff; }
+  .instructor-lead-btn:disabled { opacity: 0.55; cursor: wait; }
+  .instructor-lead-btn--confirm { background: var(--accent); color: #fff; }
   .instructor-chip-remove {
     background: none; border: none; color: var(--text-light); cursor: pointer;
     font-size: 1rem; line-height: 1; padding: 0 2px; transition: color 0.15s;

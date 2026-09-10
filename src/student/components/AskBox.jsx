@@ -4,78 +4,43 @@ import firebase from '../../lib/firebaseCompat.js';
 import { ensureAnonymousStudent, currentUid } from '../../lib/auth.js';
 import FormatToolbar from './FormatToolbar.jsx';
 import { insertSlackFormat, insertEmoji } from '../utils/formatHelpers.js';
-import { extractImageUrlForQuestionPaste } from '../../lib/clipboardImagePaste.js';
-import { IMAGE_MAX_EDGE, IMAGE_JPEG_QUALITY } from '../../constants/app.js';
+import {
+  newPasteId,
+  questionImageUrlsFromPending,
+  questionPasteStoragePath,
+  revokePendingBlobUrl,
+  runStudentQuestionImagePaste,
+  stripEmbeddedImageUrls,
+} from '../../lib/imagePaste.js';
 import useStudentDemoStore, { DEMO_STUDENT_USER_ID } from '../demo/useStudentDemoStore.js';
+import { createPendingSubmissions, submissionFingerprint } from '../lib/pendingSubmissions.js';
 
 function genId() {
-  return Math.random().toString(36).slice(2, 10);
+  return newPasteId();
 }
 
-/** Resize an image file to JPEG blob, capped at IMAGE_MAX_EDGE on the longest side. */
-function resizeImageToJpegBlob(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const u = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(u);
-      const w = img.width, h = img.height;
-      const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(w, h, 1));
-      const cw = Math.max(1, Math.round(w * scale));
-      const ch = Math.max(1, Math.round(h * scale));
-      const c = document.createElement('canvas');
-      c.width = cw; c.height = ch;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, cw, ch);
-      c.toBlob(
-        (blob) => { blob ? resolve(blob) : reject(new Error('encode')); },
-        'image/jpeg',
-        IMAGE_JPEG_QUALITY,
-      );
-    };
-    img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('image')); };
-    img.src = u;
-  });
-}
+/**
+ * How long to wait for a question write before handing the UI back.
+ *
+ * Firestore's compat `add()` does NOT reject when the device is offline: the write
+ * sits in the local queue and the promise stays pending indefinitely, so nothing
+ * ever clears `submitting` and the Submit button dies until a reload.
+ */
+const SUBMIT_TIMEOUT_MS = 12000;
 
-/** Extract image File objects from a paste event's clipboard data. */
-function collectImageFilesFromPaste(e) {
-  const out = [];
-  const cd = e.clipboardData;
-  if (!cd) return out;
-  if (cd.items && cd.items.length) {
-    for (let i = 0; i < cd.items.length; i++) {
-      const it = cd.items[i];
-      if (it.kind === 'file' && it.type && it.type.indexOf('image') === 0) {
-        const f = it.getAsFile();
-        if (f && f.size > 0) out.push(f);
-      }
-    }
-  }
-  if (!out.length && cd.files && cd.files.length) {
-    for (let j = 0; j < cd.files.length; j++) {
-      if (cd.files[j].type && cd.files[j].type.indexOf('image') === 0 && cd.files[j].size > 0) {
-        out.push(cd.files[j]);
-      }
-    }
-  }
-  return out;
-}
+/** Marker for "the write is still queued", as opposed to a real failure. */
+class SubmitStillPendingError extends Error {}
 
-/** Human-readable upload error with CORS hint. */
-function formatUploadError(err) {
-  const m = (err && err.message) ? String(err.message) : '';
-  const code = (err && err.code) ? String(err.code) : '';
-  const blob = (m + ' ' + code).toLowerCase();
-  if (
-    blob.indexOf('cors') >= 0 ||
-    blob.indexOf('network') >= 0 ||
-    blob.indexOf('preflight') >= 0 ||
-    blob.indexOf('xmlhttprequest') >= 0
-  ) {
-    return 'Image upload blocked (browser ↔ Storage). Apply storage-cors.json to your bucket with this origin — SETUP.md step "CORS".';
+/** Plain-language reason a question write was rejected. */
+function formatSubmitError(err) {
+  const code = String((err && (err.code || err.name)) || '').toLowerCase();
+  if (code.includes('permission-denied') || code.includes('unauthenticated')) {
+    return 'Your question was not accepted. Ask your instructor to check the session, then try again.';
   }
-  return 'Upload failed: ' + (m || 'check Storage rules in SETUP.md');
+  if (code.includes('unavailable') || code.includes('deadline-exceeded')) {
+    return 'Could not send your question. Check your connection and try again.';
+  }
+  return 'Could not post your question. Your text is still here — try again.';
 }
 
 /**
@@ -98,6 +63,11 @@ export default function AskBox({ sessionCode, userId, userName, showToast, onSub
   const [submitting, setSubmitting] = useState(false);
   const textareaRef = useRef(null);
   const textareaId = 'q-text';
+  // Submissions whose Firestore write has not settled yet. Lives in a ref so it
+  // survives every re-render of the ask box for as long as the student is in the
+  // session, which is exactly as long as an offline write can stay queued.
+  const pendingSubmitsRef = useRef(null);
+  if (!pendingSubmitsRef.current) pendingSubmitsRef.current = createPendingSubmissions();
 
   // --- Image upload to Firebase Storage ---
   // Memoized over the same values handlePaste already depends on, so it stays
@@ -105,131 +75,38 @@ export default function AskBox({ sessionCode, userId, userName, showToast, onSub
   const uploadImage = useCallback(
     (jpegBlob) => {
       if (!storage || !sessionCode) return Promise.reject(new Error('no storage'));
-      const path =
-        'sessions/' +
-        sessionCode +
-        '/question_paste/' +
-        userId +
-        '_' +
-        Date.now() +
-        '_' +
-        genId() +
-        '.jpg';
       return storage
-        .ref(path)
+        .ref(questionPasteStoragePath(sessionCode, userId))
         .put(jpegBlob, { contentType: 'image/jpeg' })
         .then((snap) => snap.ref.getDownloadURL());
     },
     [storage, sessionCode, userId],
   );
 
-  // --- Paste handler ---
   const handlePaste = useCallback(
-    async (e) => {
-      if (!sessionCode) return;
-      const files = collectImageFilesFromPaste(e);
-      const htmlSrc = extractImageUrlForQuestionPaste(e, files.length > 0);
-      if (!files.length && !htmlSrc) return;
-
-      // Demo mode has no Firebase Storage: block image paste with a friendly
-      // toast but let text (and the format toolbar) work normally. Never touch
-      // Storage. Text-only pastes never reach here (guarded above).
-      if (isDemoMode) {
-        e.preventDefault();
-        showToast('Image paste: use a live session (demo has no Storage).');
-        return;
-      }
-
-      if (!storage) {
-        if (htmlSrc) {
-          e.preventDefault();
-          setPendingImages((prev) => [
-            ...prev,
-            { pid: genId() + genId(), url: htmlSrc, blobUrl: '' },
-          ]);
-          showToast('Image link added (Firebase Storage not active—this uses the original URL).');
-          return;
-        }
-        showToast(
-          'Image files need Firebase Storage (paid plan). Paste an https:// image link instead, or upgrade Storage.',
-        );
-        return;
-      }
-
-      e.preventDefault();
-
-      if (files.length) {
-        for (let k = 0; k < files.length; k++) {
-          const pid = genId() + '_' + Date.now() + '_' + k;
-          setPendingImages((prev) => [...prev, { pid, url: '', blobUrl: '', uploading: true }]);
-          showToast('Uploading image…');
-          try {
-            const jpegBlob = await resizeImageToJpegBlob(files[k]);
-            const blobUrl = URL.createObjectURL(jpegBlob);
-            setPendingImages((prev) =>
-              prev.map((r) =>
-                r.pid === pid ? { pid, url: '', blobUrl, uploading: false } : r,
-              ),
-            );
-            const url = await uploadImage(jpegBlob);
-            setPendingImages((prev) => {
-              return prev.map((r) => {
-                if (r.pid !== pid) return r;
-                try { URL.revokeObjectURL(r.blobUrl); } catch (er) {}
-                return { pid, url, blobUrl: '' };
-              });
-            });
-            showToast('Image attached. Add text or submit.');
-          } catch (err) {
-            console.warn(err);
-            setPendingImages((prev) => {
-              const row = prev.find((r) => r.pid === pid);
-              if (row) { try { URL.revokeObjectURL(row.blobUrl); } catch (er2) {} }
-              return prev.filter((r) => r.pid !== pid);
-            });
-            showToast(formatUploadError(err));
-          }
-        }
-        return;
-      }
-
-      if (htmlSrc) {
-        const pid2 = genId() + '_' + Date.now();
-        setPendingImages((prev) => [...prev, { pid: pid2, url: htmlSrc, blobUrl: '' }]);
-        showToast('Uploading image…');
-        try {
-          const r = await fetch(htmlSrc, { mode: 'cors' });
-          if (!r.ok) throw new Error('Could not download image (site blocked copy). Try right-click → Copy image.');
-          const blob0 = await r.blob();
-          const jpeg2 = await resizeImageToJpegBlob(blob0);
-          const url2 = await uploadImage(jpeg2);
-          setPendingImages((prev) =>
-            prev.map((r) => (r.pid === pid2 ? { pid: pid2, url: url2, blobUrl: '' } : r)),
-          );
-          showToast('Image attached. Add text or submit.');
-        } catch (err) {
-          console.warn(err);
-          // Keep the placeholder with the original URL (fallback)
-          showToast('Using image link (download or upload was blocked). Submit to attach.');
-        }
-      }
-    },
+    (e) =>
+      runStudentQuestionImagePaste(e, {
+        sessionCode,
+        storage,
+        isDemoMode,
+        showToast,
+        uploadImage,
+        setPendingImages,
+      }),
     [sessionCode, storage, showToast, isDemoMode, uploadImage],
   );
 
   function removePendingImage(pid) {
     setPendingImages((prev) => {
       const row = prev.find((r) => r.pid === pid);
-      if (row && row.blobUrl) { try { URL.revokeObjectURL(row.blobUrl); } catch (e) {} }
+      revokePendingBlobUrl(row);
       return prev.filter((r) => r.pid !== pid);
     });
   }
 
   function clearPendingImages() {
     setPendingImages((prev) => {
-      prev.forEach((row) => {
-        if (row.blobUrl) { try { URL.revokeObjectURL(row.blobUrl); } catch (e) {} }
-      });
+      prev.forEach(revokePendingBlobUrl);
       return [];
     });
   }
@@ -238,6 +115,9 @@ export default function AskBox({ sessionCode, userId, userName, showToast, onSub
   async function handleSubmit() {
     let t = text.trim();
     if (!t && !pendingImages.length) return;
+    // Exact textarea contents at submit time, used to decide later whether the
+    // box still holds this question or the student has moved on.
+    const submittedText = text;
 
     // Demo mode: prepend the question to the in-memory store. Stamp the demo
     // authorId and track it in sessionStorage (same key the real flow uses) so
@@ -282,18 +162,13 @@ export default function AskBox({ sessionCode, userId, userName, showToast, onSub
       return;
     }
 
-    const imageUrls = pendingImages.map((r) => r.url).filter(Boolean);
+    const imageUrls = questionImageUrlsFromPending(pendingImages);
     if (pendingImages.length && imageUrls.length !== pendingImages.length) {
       showToast('Wait for all images to finish uploading, then submit again.');
       return;
     }
 
-    // Strip any embedded image URLs that were pasted as text
-    imageUrls.forEach((u) => {
-      if (!u) return;
-      const re = new RegExp(u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-      t = t.replace(re, '').replace(/\n{3,}/g, '\n\n').trim();
-    });
+    t = stripEmbeddedImageUrls(t, imageUrls);
 
     let textOut = t.trim();
     if (!textOut && imageUrls.length) textOut = '';
@@ -305,7 +180,19 @@ export default function AskBox({ sessionCode, userId, userName, showToast, onSub
       ? userName
       : 'Anonymous';
 
+    // Refuse only this exact question while its write is still outstanding. The
+    // 12s timeout below hands the button back before an offline write lands, and
+    // without this a second press queued a second document: both then flushed on
+    // reconnect and the same question appeared twice on the board.
+    const pendingSubmits = pendingSubmitsRef.current;
+    const fingerprint = submissionFingerprint(textOut, imageUrls);
+    if (!pendingSubmits.reserve(fingerprint)) {
+      showToast('That question is already sending — it posts as soon as you are back online.');
+      return;
+    }
+
     setSubmitting(true);
+    let submitTimer = null;
     try {
       // Ensure a silent anonymous identity so the write carries a Firebase uid
       // the rules can bind to. Falls back gracefully if auth is unavailable.
@@ -329,29 +216,85 @@ export default function AskBox({ sessionCode, userId, userName, showToast, onSub
       if (authUid) payload.authorUid = authUid;
       if (imageUrls.length) payload.imageUrls = imageUrls;
 
-      const docRef = await db
+      // Document id minted on the client (works offline) and written with set()
+      // rather than add(), so this submission addresses one specific document
+      // instead of appending a new one every time it is written.
+      const docRef = db
         .collection('sessions')
         .doc(sessionCode)
         .collection('questions')
-        .add(payload);
+        .doc();
 
-      // Track this question as "mine" in sessionStorage
-      const key = 'sqa_my_questions_' + String(sessionCode || '').replace(/[^A-Z0-9_-]/gi, '');
-      try {
-        const myQs = JSON.parse(sessionStorage.getItem(key) || '[]');
-        myQs.push(docRef.id);
-        sessionStorage.setItem(key, JSON.stringify(myQs));
-      } catch (e) {}
+      // Firestore write. Kept in its own variable so the timeout below can hand
+      // the UI back WITHOUT cancelling it: the queued write still flushes when
+      // connectivity returns, and rememberMyQuestion runs whenever it lands.
+      const addPromise = docRef.set(payload);
+      addPromise.then(
+        () => pendingSubmits.release(fingerprint),
+        () => pendingSubmits.release(fingerprint),
+      );
+
+      const stillQueued = await Promise.race([
+        addPromise.then(() => false),
+        new Promise((_resolve, reject) => {
+          submitTimer = setTimeout(() => reject(new SubmitStillPendingError()), SUBMIT_TIMEOUT_MS);
+        }),
+      ]).catch((err) => {
+        if (!(err instanceof SubmitStillPendingError)) throw err;
+        // Offline (or very slow): stop blocking the student. Keep following the
+        // queued write so they still learn how it ended.
+        addPromise.then(
+          () => {
+            rememberMyQuestion(docRef.id);
+            // Clear the box only if it still holds exactly what was sent, so
+            // anything they typed while waiting is left alone.
+            setText((cur) => (cur === submittedText ? '' : cur));
+            clearPendingImages();
+            showToast('Your question posted.');
+            if (onSubmitDone) onSubmitDone();
+          },
+          (err2) => {
+            console.warn('Queued submit question error:', err2);
+            showToast(formatSubmitError(err2));
+          },
+        );
+        return true;
+      });
+
+      if (stillQueued) {
+        showToast('Still sending — this posts as soon as you are back online. No need to submit again.');
+        return;
+      }
+
+      rememberMyQuestion(docRef.id);
 
       setText('');
       clearPendingImages();
       showToast('Question submitted!');
       if (onSubmitDone) onSubmitDone();
     } catch (e) {
+      // Realistic causes: tightened Firestore rules, App Check enforcement, or
+      // anonymous sign-in switched off. Silence here read as a dead button and
+      // the student just kept tapping Submit.
       console.warn('Submit question error:', e);
+      // Nothing is outstanding once the write has failed, so let them try again.
+      pendingSubmits.release(fingerprint);
+      showToast(formatSubmitError(e));
     } finally {
+      if (submitTimer) clearTimeout(submitTimer);
       setSubmitting(false);
     }
+  }
+
+  /** Track a question as "mine" so the Edit affordance appears on it. */
+  function rememberMyQuestion(questionId) {
+    if (!questionId) return;
+    const key = 'sqa_my_questions_' + String(sessionCode || '').replace(/[^A-Z0-9_-]/gi, '');
+    try {
+      const myQs = JSON.parse(sessionStorage.getItem(key) || '[]');
+      myQs.push(questionId);
+      sessionStorage.setItem(key, JSON.stringify(myQs));
+    } catch (e) {}
   }
 
   function handleInsertFormat(mode) {

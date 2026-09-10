@@ -19,6 +19,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { isHttpsUrl } from '../lib/richText.js';
 
 export default function ImageLightbox() {
   const [src, setSrc] = useState(null);
@@ -36,6 +37,10 @@ export default function ImageLightbox() {
       if (!link) return;
       const href = link.getAttribute('href');
       if (!href) return;
+      // The href becomes an <img src>. Every caller already filters attachment
+      // URLs to https, so this is defence in depth: re-check here rather than
+      // trusting whatever markup put the anchor in the DOM.
+      if (!isHttpsUrl(href)) return;
       e.preventDefault();
       // Remember what had focus so we can restore it when the lightbox closes.
       openerRef.current = document.activeElement;

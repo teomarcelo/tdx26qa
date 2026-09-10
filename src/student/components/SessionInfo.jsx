@@ -123,6 +123,12 @@ export default function SessionInfo({ currentSession, showToast }) {
   }
 
   function handleSurvey() {
+    // Same guard as handleOrgClaim: the URL comes from the session document, and
+    // an unvalidated one reaching window.open lets a `javascript:` URI run.
+    if (!isHttpOrHttpsUrl(surveyUrl)) {
+      showToast('Survey link is not set to a valid http(s) URL.');
+      return;
+    }
     window.open(surveyUrl, '_blank', 'noopener,noreferrer');
     copyPlainToClipboard(surveyCode).then(
       () => {

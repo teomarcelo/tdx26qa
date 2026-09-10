@@ -4,8 +4,12 @@
     --surface2: #f0ede8;
     --border: #e2ddd6;
     --text: #1a1814;
-    --text-muted: #7a7570;
-    --text-light: #b0aba4;
+    /* Both pass WCAG AA against the cream --bg, not just against white. The old
+       values (#7a7570 / #b0aba4) failed there, and they are applied to field
+       labels, hints and "(optional)" qualifiers. Keep in sync with
+       instructor.css. */
+    --text-muted: #6e6a65;
+    --text-light: #6b6660;
     --accent: #0070d2;
     --accent-light: #e8f2fc;
     --accent-hover: #005fb2;
@@ -742,6 +746,7 @@
     z-index: 0;
   }
   .modal:has(details.fmt-emoji-more[open]) .format-toolbar ~ #edit-text,
+  .modal:has(details.fmt-emoji-more[open]) .format-toolbar ~ #edit-image-previews,
   .modal:has(details.fmt-emoji-more[open]) .format-toolbar ~ .modal-footer {
     position: relative;
     z-index: 0;
@@ -1552,6 +1557,8 @@
   .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
   .empty-state svg { margin-bottom: 1rem; opacity: 0.3; }
   .empty-state p { font-size: 0.95rem; }
+
+  .corpus-scope-notice { font-size: 0.78rem; line-height: 1.45; color: var(--text-muted); margin: 0 0 0.6rem; }
 
   .toast {
     position: fixed; bottom: 1.5rem; right: 1.5rem;

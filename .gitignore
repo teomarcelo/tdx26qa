@@ -12,7 +12,8 @@ dist/
 .claude/worktrees/
 
 # Local secrets / config and Firebase deploy cache (never commit)
-.env.local
+.env
+.env*.local
 .firebase/
 
 # Emulator run artifacts (npm run test:rules)

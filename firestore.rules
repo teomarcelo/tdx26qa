@@ -45,6 +45,13 @@ service cloud.firestore {
       return request.auth.token.get('email', '').lower();
     }
 
+    // The doc id the client derives from a verified email: lowercased, with runs
+    // of non-alphanumerics collapsed to underscores (emailToId in the client).
+    // e.g. teacher@salesforce.com → teacher_salesforce_com
+    function ownInstructorDocId() {
+      return verifiedEmail().split('[^a-z0-9]+').join('_');
+    }
+
     // A verified salesforce.com instructor.
     function isSalesforce() {
       return isSignedIn()
@@ -64,6 +71,17 @@ service cloud.firestore {
         || (('instructorEmails' in data)
             && data.instructorEmails is list
             && verifiedEmail() in data.instructorEmails);
+    }
+
+    // Session OWNER specifically — NOT merely a listed co-instructor. Any
+    // verified salesforce user can self-join a session as a co-instructor (see
+    // joiningSelf below), so co-instructor membership is a self-service claim
+    // and a much weaker signal than ownership. Destroying a session and
+    // rewriting its ownership fields are therefore owner-only powers.
+    function isSessionOwner(data) {
+      return ('ownerEmail' in data)
+        && data.ownerEmail is string
+        && data.ownerEmail == verifiedEmail();
     }
 
     // Legacy session without email ownership fields (pre-backfill) — tolerated.
@@ -98,17 +116,314 @@ service cloud.firestore {
         : [];
     }
 
+    function priorDirectoryKeys(before) {
+      return ('instructorDirectory' in before) && (before.instructorDirectory is map)
+        ? before.instructorDirectory.keys()
+        : [];
+    }
+
     // The display roster may grow but never shrink, so joining cannot be used to
     // hide the instructors already listed on a session.
-    function rosterOnlyGrows(before, after) {
-      return !after.diff(before).affectedKeys().hasAny(['instructors'])
+    function rosterOnlyGrows(before, after, keys) {
+      return !keys.hasAny(['instructors'])
         || (('instructors' in after)
             && after.instructors is list
             && after.instructors.hasAll(priorInstructorNames(before)));
     }
 
-    function rosterLabelOk(before, after) {
-      return !after.diff(before).affectedKeys().hasAny(['instructorNames'])
+    // Lead transfer: any listed instructor may move ownerEmail to another
+    // @salesforce.com address that has already OAuth-joined this session (it is
+    // already in instructorEmails). The allow-list must not shrink in the same
+    // write, so the previous lead stays able to teach. Clearing ownerEmail is
+    // still forbidden (that is the legacy-doc escalation). Join cannot smuggle
+    // this: joiningSelf only allows roster keys, and ownsSession(before) is
+    // false until the join has committed.
+    function ownershipTransferred(before, after, keys) {
+      return keys.hasAny(['ownerEmail'])
+        && ('ownerEmail' in before)
+        && before.ownerEmail is string
+        && ('ownerEmail' in after)
+        && after.ownerEmail is string
+        && after.ownerEmail == after.ownerEmail.lower()
+        && after.ownerEmail != before.ownerEmail
+        && after.ownerEmail.matches('^[^@]+@salesforce[.]com$')
+        && after.ownerEmail in priorInstructorEmails(before)
+        && ('instructorEmails' in after)
+        && after.instructorEmails is list
+        && after.ownerEmail in after.instructorEmails
+        && after.instructorEmails.hasAll(priorInstructorEmails(before))
+        && (!keys.hasAny(['ownerId'])
+            || (('ownerId' in after)
+                && after.ownerId is string
+                && after.ownerId == after.ownerEmail.split('[^a-z0-9]+').join('_')));
+    }
+
+    // `ownerEmail` is the root of session authority. Clients may not clear it.
+    // Two writes are allowed: (1) a legacy doc with no ownerEmail yet, where a
+    // verified instructor stamps their OWN email — a repair path, not a
+    // takeover; (2) a lead transfer onto someone already listed on the session.
+    function ownerEmailPreserved(before, after, keys) {
+      return !keys.hasAny(['ownerEmail'])
+        || (!('ownerEmail' in before)
+            && ('ownerEmail' in after)
+            && after.ownerEmail is string
+            && after.ownerEmail == verifiedEmail())
+        || ownershipTransferred(before, after, keys);
+    }
+
+    // `ownerName` is the lead instructor's label: it renders as the "Lead" chip
+    // for every student in the room and is the byline the owner's notes and
+    // answers are attributed to. Writing it alone is still an OWNER power so a
+    // self-joined co-instructor cannot rename the lead mid-workshop. The same
+    // write that transfers ownerEmail may also set ownerName / ownerId to match
+    // the new lead.
+    //
+    // isSessionOwner(after) keeps legacy docs repairable: a doc with no
+    // ownerEmail has no owner to satisfy isSessionOwner(before), so the only way
+    // to set its ownerName is in the same write that stamps the caller's own
+    // ownerEmail.
+    function ownerLabelsOk(before, after, keys) {
+      return !keys.hasAny(['ownerName', 'ownerId'])
+        || isSessionOwner(before)
+        || isSessionOwner(after)
+        || ownershipTransferred(before, after, keys);
+    }
+
+    // Name+email map used to offer the Lead button. Keys are emailToId values
+    // (no dots), so a join can write one nested field. Listed instructors may
+    // only add or refresh their own entry; the owner may add others. The map
+    // may not shrink, and it stays small.
+    function instructorDirectoryOk(before, after, keys) {
+      return !keys.hasAny(['instructorDirectory'])
+        || (('instructorDirectory' in after)
+            && after.instructorDirectory is map
+            && after.instructorDirectory.size() <= 40
+            && after.instructorDirectory.keys().hasAll(priorDirectoryKeys(before))
+            && (isSessionOwner(before)
+                || after.instructorDirectory.keys().hasOnly(
+                     priorDirectoryKeys(before).concat([ownInstructorDocId()])
+                   )));
+    }
+
+    // The same size cap create() applies. Without it an update can grow the name
+    // without limit, and sessionName renders on every student's screen.
+    function sessionNameOk(before, after, keys) {
+      return !keys.hasAny(['sessionName'])
+        || (('sessionName' in after)
+            && after.sessionName is string
+            && after.sessionName.size() <= 300);
+    }
+
+    // ── Student-facing launch links ──────────────────────────────────────────
+    // studentOrgClaimUrl and studentSurveyUrl render as BUTTONS on every
+    // attendee's session card, so whatever is stored here is what the whole room
+    // clicks. The client checks the scheme (isHttpOrHttpsUrl in
+    // src/lib/richText.js, and again in SessionSettings.handleSave) but the
+    // client is not the authorization layer: without this guard a self-joined
+    // co-instructor can store `javascript:alert(1)`, or any other scheme, and
+    // hand it to every student in the session.
+    //
+    // What this CANNOT do: an http(s) phishing link is a well-formed URL and is
+    // indistinguishable from a real one here. This closes the scheme hole and
+    // bounds the length; it is not a link-reputation check.
+    //
+    // matches() is a whole-string match and `.` does not match a newline, so a
+    // multi-line value that merely CONTAINS an https line is rejected rather
+    // than accepted on the strength of that line. Both directions were probed
+    // against the emulator rather than assumed.
+    function launchUrlOk(v) {
+      return v is string
+        && v.size() <= 2000
+        && (v == '' || v.matches('^https?://.*'));
+    }
+
+    // The copy-to-clipboard codes shown under each button. Free text by design,
+    // so the only thing to enforce is a size bound.
+    function launchCopyTextOk(v) {
+      return v is string && v.size() <= 2000;
+    }
+
+    // The whole group is skipped unless the write touches one of the four, so a
+    // session that already holds a malformed URL — stored before this guard
+    // existed — stays fully editable through every other flow (rename, roster,
+    // notes). One bad legacy value must never brick a live session.
+    //
+    // Touching ONE of the four validates all four, rather than a hasAny() per
+    // field, because the budget is spoken for (see the EXPRESSION BUDGET note
+    // below). That costs nothing in practice — SessionSettings.handleSave
+    // writes all four in a single payload, and it is the only update path that
+    // touches them.
+    //
+    // A DELETED field is absent from request.resource.data, and losing it only
+    // stops the button rendering, so absence passes.
+    function studentLinksOk(before, after, keys) {
+      return !keys.hasAny([
+               'studentOrgClaimUrl', 'studentSurveyUrl',
+               'studentOrgClaimCopyText', 'studentSurveyCopyText',
+             ])
+        || ((!('studentOrgClaimUrl' in after) || launchUrlOk(after.studentOrgClaimUrl))
+            && (!('studentSurveyUrl' in after) || launchUrlOk(after.studentSurveyUrl))
+            && (!('studentOrgClaimCopyText' in after)
+                || launchCopyTextOk(after.studentOrgClaimCopyText))
+            && (!('studentSurveyCopyText' in after)
+                || launchCopyTextOk(after.studentSurveyCopyText)));
+    }
+
+    // ── Instructor notes ─────────────────────────────────────────────────────
+    // sessionNotes is a single array field on the session document and every
+    // card in it renders on every student's board. Without these guards it had
+    // no type, no element count and no size constraint at all, so one write
+    // could push hundreds of kilobytes of text onto every screen in the room and
+    // drive the document toward Firestore's 1 MiB ceiling — past which EVERY
+    // later write to the session fails (settings, roster, notes, joins), a
+    // per-session denial of service.
+    //
+    // NO BYLINE ENFORCEMENT, deliberately. A note records its author as
+    // `instructor`, a bare display-name string with no link back to an identity,
+    // so the rules cannot tell whose note is whose and cannot stop a
+    // co-instructor writing under the lead's name. That needs a schema change.
+    //
+    // The three capped fields are exactly the three that render as text to
+    // students (title and body on the card, instructor as the "Added by" byline
+    // in InstructorNotesFeed), so the defacement surface is fully covered.
+    //
+    // WHAT IS STILL UNBOUNDED, and why. Rules cannot loop, cannot reach into a
+    // nested map, and cannot ask how many bytes a value is, so `id`, `imageUrls`
+    // entries, `links` entries and any unknown extra key can each still hold a
+    // large value. None of them render as free text, so what is left is document
+    // bloat, not defacement. Closing that needs a closed key set per note, which
+    // is rejected for the same reason a closed field set is rejected on the
+    // session itself: buildSessionRenameUpdates() spreads stored notes verbatim,
+    // so one unknown key already in production would make renaming impossible.
+    //
+    // get(k, '') rather than ('k' in n): a note that predates a field must not
+    // be undeniable, and the default makes a missing key evaluate cleanly
+    // instead of raising. The caps are on string LENGTH, which is what .size()
+    // means for the strings the client writes.
+    function noteOk(n) {
+      return n.get('body', '').size() <= 12000
+        && n.get('title', '').size() <= 2000
+        && n.get('instructor', '').size() <= 200;
+    }
+
+    // Rules have no loop, so every slot is checked by index and a slot past the
+    // end short-circuits to true. The element cap and the number of noteAtOk()
+    // calls MUST stay in step: an unchecked slot is an unbounded slot, and
+    // parking the blob at the end of the array is the obvious next move.
+    function noteAtOk(notes, i) {
+      return notes.size() <= i || noteOk(notes[i]);
+    }
+
+    // EXPRESSION BUDGET — read this before adding anything to noteOk() or
+    // raising the cap. Firestore stops evaluating a request after 1000
+    // expressions and DENIES it, so an over-ambitious guard here does not fail
+    // safe: it silently rejects the notes save an instructor is making live.
+    // Measured on the emulator against this exact rule set: with three checks
+    // per note, roughly 18 slots is the ceiling, and every unused slot still
+    // costs. 16 is the cap because the client's own SESSION_SIDEBAR_NOTES_MAX
+    // is 15 (one slot spare, because a save is the three-way mergeSessionNotes
+    // and can legitimately come back carrying a note a co-instructor added since
+    // this draft loaded) and because sitting on the ceiling leaves no room for
+    // the next guard anyone adds. Re-measure if you change any of it.
+    //
+    // Per-element TYPE checks were the thing traded away to afford covering all
+    // three rendered fields on all 16 slots. A non-string value slips the cap
+    // (.size() on a map is its key count), but it renders as "[object Object]",
+    // so it buys bloat and not defacement — and bloat is already only partly
+    // bounded, see above.
+    function sessionNotesOk(before, after, keys) {
+      return !keys.hasAny(['sessionNotes'])
+        || !('sessionNotes' in after)
+        || (after.sessionNotes is list
+            && after.sessionNotes.size() <= 16
+            && noteAtOk(after.sessionNotes, 0) && noteAtOk(after.sessionNotes, 1)
+            && noteAtOk(after.sessionNotes, 2) && noteAtOk(after.sessionNotes, 3)
+            && noteAtOk(after.sessionNotes, 4) && noteAtOk(after.sessionNotes, 5)
+            && noteAtOk(after.sessionNotes, 6) && noteAtOk(after.sessionNotes, 7)
+            && noteAtOk(after.sessionNotes, 8) && noteAtOk(after.sessionNotes, 9)
+            && noteAtOk(after.sessionNotes, 10) && noteAtOk(after.sessionNotes, 11)
+            && noteAtOk(after.sessionNotes, 12) && noteAtOk(after.sessionNotes, 13)
+            && noteAtOk(after.sessionNotes, 14) && noteAtOk(after.sessionNotes, 15));
+    }
+
+    // The pre-`sessionNotes` single-note fields. getSessionNotesFromDoc still
+    // reads them for documents that never migrated, so they render to students
+    // too and get the same bound. The shipped editor always writes them empty.
+    function legacyNoteFieldsOk(before, after, keys) {
+      return !keys.hasAny([
+               'sessionNoteTitle', 'sessionNoteBody', 'sessionNoteImageUrls',
+             ])
+        || ((!('sessionNoteTitle' in after)
+             || (after.sessionNoteTitle is string
+                 && after.sessionNoteTitle.size() <= 2000))
+            && (!('sessionNoteBody' in after)
+                || (after.sessionNoteBody is string
+                    && after.sessionNoteBody.size() <= 12000))
+            && (!('sessionNoteImageUrls' in after)
+                || (after.sessionNoteImageUrls is list
+                    && after.sessionNoteImageUrls.size() <= 20
+                    && after.sessionNoteImageUrls.join(',').size() <= 20000)));
+    }
+
+    // Every session-update check, over ONE shared affectedKeys().
+    //
+    // `keys` is threaded through as a parameter instead of each guard calling
+    // after.diff(before).affectedKeys() for itself, and that is not tidying: it
+    // is what keeps the combined legacy-claim write inside the 1000-expression
+    // budget. Eight guards computing the same diff cost eight diffs, and a
+    // claim write (ownerEmail + ownerName + roster + notes, all at once) spends
+    // what is left on the per-note checks and is DENIED for running out —
+    // measured on the emulator, at the client's own note cap, on a real payload.
+    // Firestore does not distinguish "denied because the rule said no" from
+    // "denied because evaluation ran out", so that failure surfaces to an
+    // instructor as a permission error on a legitimate save.
+    //
+    // Anything added here spends from the same budget. Re-measure with a full
+    // 16-note payload on the legacy branch, which is the costliest allow path,
+    // before assuming a new check is free.
+    //
+    // ORDER MATTERS FOR COST, NOT FOR MEANING. This is one long AND, so the
+    // result is the same whichever way round it reads — but putting ownership
+    // first means a caller with no relationship to the session falls out there
+    // instead of first paying for every field guard.
+    function sessionUpdateOk(before, after, keys) {
+      return (
+          ownsSession(before)
+          || legacySession(before)
+          || joiningSelf(before, after, keys)
+        )
+        && ownerEmailPreserved(before, after, keys)
+        && ownerLabelsOk(before, after, keys)
+        && sessionNameOk(before, after, keys)
+        && studentLinksOk(before, after, keys)
+        && sessionNotesOk(before, after, keys)
+        && legacyNoteFieldsOk(before, after, keys)
+        && instructorEmailsOk(before, after, keys)
+        && instructorDirectoryOk(before, after, keys);
+    }
+
+    // Who may edit the co-instructor allow-list. The OWNER has full latitude
+    // (removing a co-instructor is a legitimate owner action). Anyone else may
+    // only add or remove THEMSELVES: without this, self-joining as a
+    // co-instructor also buys the power to evict the owner from the allow-list
+    // and lock them out of their own session.
+    function instructorEmailsOk(before, after, keys) {
+      return !keys.hasAny(['instructorEmails'])
+        || isSessionOwner(before)
+        || (('instructorEmails' in after)
+            && after.instructorEmails is list
+            // Nobody but the caller may be added...
+            && after.instructorEmails.hasOnly(
+                 priorInstructorEmails(before).concat([verifiedEmail()])
+               )
+            // ...and nobody but the caller may be removed.
+            && priorInstructorEmails(before).hasOnly(
+                 after.instructorEmails.concat([verifiedEmail()])
+               ));
+    }
+
+    function rosterLabelOk(before, after, keys) {
+      return !keys.hasAny(['instructorNames'])
         || (('instructorNames' in after)
             && after.instructorNames is string
             && after.instructorNames.size() <= 2000);
@@ -117,15 +432,14 @@ service cloud.firestore {
     // Verified salesforce instructor adding THEMSELVES as a co-instructor. Lets
     // the automatic "join session" co-instructor flow work without a server.
     //
-    // Scoped to exactly the three roster fields JoinSessionModal writes. Without
-    // that scope a "join" doubles as a way to edit any session's content, evict
-    // the existing instructors, or drop ownerEmail — and a session with no
-    // ownerEmail is a legacy doc that legacySession() lets ANY salesforce user
-    // rewrite or delete.
+    // Scoped to the roster fields JoinSessionModal writes (emails, display
+    // names, and the name+email directory). Without that scope a "join" doubles
+    // as a way to edit any session's content, evict the existing instructors, or
+    // drop ownerEmail — and a session with no ownerEmail is a legacy doc that
+    // legacySession() lets ANY salesforce user rewrite or delete.
     // (Co-instructor management moves to a Cloud Function in a later phase.)
-    function joiningSelf(before, after) {
-      return after.diff(before).affectedKeys()
-               .hasOnly(['instructorEmails', 'instructors', 'instructorNames'])
+    function joiningSelf(before, after, keys) {
+      return keys.hasOnly(['instructorEmails', 'instructors', 'instructorNames', 'instructorDirectory'])
         && ('instructorEmails' in after)
         && after.instructorEmails is list
         && verifiedEmail() in after.instructorEmails
@@ -134,8 +448,8 @@ service cloud.firestore {
         && after.instructorEmails.hasOnly(
              priorInstructorEmails(before).concat([verifiedEmail()])
            )
-        && rosterOnlyGrows(before, after)
-        && rosterLabelOk(before, after);
+        && rosterOnlyGrows(before, after, keys)
+        && rosterLabelOk(before, after, keys);
     }
 
     // ── Vote integrity ───────────────────────────────────────────────────────
@@ -153,11 +467,18 @@ service cloud.firestore {
       return ('votes' in data) && (data.votes is int) ? data.votes : 0;
     }
 
+    // hasAll/hasOnly are SET tests — they ignore multiplicity. On their own they
+    // happily accept a `voters` array padded with thousands of duplicate copies
+    // of a legal uid, which bloats the question document toward Firestore's 1MiB
+    // limit; past that, EVERY later write to that question fails (votes, the
+    // instructor's answer, pinning, status), a per-question denial of service.
+    // The exact size delta below is what makes multiplicity unforgeable.
     function addsOwnVote(before, after) {
       return !(request.auth.uid in voterList(before))
         && request.auth.uid in after.voters
         && after.voters.hasAll(voterList(before))
         && after.voters.hasOnly(voterList(before).concat([request.auth.uid]))
+        && after.voters.size() == voterList(before).size() + 1
         && after.votes == voteCount(before) + 1;
     }
 
@@ -166,6 +487,7 @@ service cloud.firestore {
         && !(request.auth.uid in after.voters)
         && voterList(before).hasAll(after.voters)
         && voterList(before).hasOnly(after.voters.concat([request.auth.uid]))
+        && after.voters.size() == voterList(before).size() - 1
         && after.votes == voteCount(before) - 1;
     }
 
@@ -175,13 +497,6 @@ service cloud.firestore {
         && ('voters' in after) && after.voters is list
         && ('votes' in after) && after.votes is int
         && (addsOwnVote(before, after) || removesOwnVote(before, after));
-    }
-
-    // The doc id the client derives from a verified email: lowercased, with runs
-    // of non-alphanumerics collapsed to underscores (emailToId in the client).
-    // e.g. teacher@salesforce.com → teacher_salesforce_com
-    function ownInstructorDocId() {
-      return verifiedEmail().split('[^a-z0-9]+').join('_');
     }
 
     // Instructor accounts (display name + hashed PIN, joined-session lists).
@@ -214,17 +529,36 @@ service cloud.firestore {
       // `resource` is null when the target does not exist (a .set() is checked
       // against both create and update); guard it so this reads as false rather
       // than raising an evaluation error.
+      //
+      // The field guards apply to EVERY update path, including the
+      // owner/co-instructor path. Because co-instructor membership is
+      // self-service, that path is not a trust boundary on its own: without
+      // these guards a self-joined instructor could clear ownerEmail, rename the
+      // lead without a real transfer, take over ownerId alone, evict the real
+      // owner, bloat sessionName, point the student-facing buttons at any URL
+      // scheme, and put an unbounded blob of notes on every screen.
+      //
+      // Every guard is gated on the field being written, so a document that
+      // already holds a value one of them would reject stays fully editable.
+      // That is deliberate: these rules must never brick a live session.
+      //
+      // The checks live in sessionUpdateOk() so that the diff() is computed
+      // once here and shared by all of them; see the budget note there before
+      // adding anything.
       allow update: if resource != null
         && isSalesforce()
-        && (
-          ownsSession(resource.data)
-          || legacySession(resource.data)
-          || joiningSelf(resource.data, request.resource.data)
-        );
+        && sessionUpdateOk(
+             resource.data,
+             request.resource.data,
+             request.resource.data.diff(resource.data).affectedKeys()
+           );
 
-      // Delete: owner/co-instructor (or legacy) salesforce instructor only.
+      // Delete: the session OWNER only (legacy pre-backfill docs, which have no
+      // ownerEmail to check, stay tolerated). Co-instructor membership is
+      // self-service — any verified salesforce user can add themselves — so it
+      // must never confer the power to destroy someone else's session.
       allow delete: if isSalesforce()
-        && (ownsSession(resource.data) || legacySession(resource.data));
+        && (isSessionOwner(resource.data) || legacySession(resource.data));
 
       match /questions/{questionId} {
         allow read: if true;
@@ -243,6 +577,7 @@ service cloud.firestore {
             ])
           && (!('imageUrls' in request.resource.data)
               || (request.resource.data.imageUrls is list
+                  // Keep in step with QUESTION_IMAGE_URLS_MAX in src/constants/app.js.
                   && request.resource.data.imageUrls.size() <= 10))
           && request.resource.data.authorUid is string
           && request.resource.data.authorUid == request.auth.uid
@@ -253,33 +588,51 @@ service cloud.firestore {
           && request.resource.data.authorId is string
           && request.resource.data.authorId.size() <= 200
           && request.resource.data.status == 'pending'
+          // `answer` stays in the allow-list because the shipped client sends
+          // `answer: ''` on every question, but it must arrive EMPTY: the
+          // student view renders q.answer under an "Instructor" label, so a
+          // non-empty value written at creation time is instructor-attributed
+          // text authored by a student.
+          && (!('answer' in request.resource.data)
+              || request.resource.data.answer == '')
           && request.resource.data.pinned == false
           && request.resource.data.votes == 0
           && request.resource.data.voters is list
           && request.resource.data.voters.size() == 0;
 
         // Update paths:
-        //  - salesforce instructor: full update (answer / pin / status / etc.)
+        //  - an instructor OF THIS SESSION: full update (answer / pin / status)
         //  - any signed-in user: toggle THEIR OWN upvote
-        //  - question author: edit own text only (tolerates legacy w/o authorUid
-        //    by simply not matching — legacy questions just aren't self-editable)
+        //  - question author: edit own text and/or imageUrls (tolerates legacy
+        //    w/o authorUid by simply not matching — those questions just aren't
+        //    self-editable). Votes, status, answers, pin stay off this path.
+        //
+        // COST: instructsSession() get()s the parent session, a billed read. It
+        // sits behind isSalesforce(), which is false for every student, so the
+        // two high-volume student paths below (upvote, author edit) still
+        // short-circuit out before any read happens. Keep it that way — at event
+        // scale those are the paths that run thousands of times.
         allow update: if resource != null && (
-          isSalesforce()
+          (isSalesforce() && instructsSession(sessionId))
           || togglesOwnVote(resource.data, request.resource.data)
           || (
             isSignedIn()
             && ('authorUid' in resource.data)
             && resource.data.authorUid == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'imageUrls'])
             && request.resource.data.text is string
-            // Same cap as create; without it an edit can grow past the limit.
+            // Same caps as create; without them an edit can grow past the limit.
             && request.resource.data.text.size() <= 10000
+            && (!('imageUrls' in request.resource.data)
+                || (request.resource.data.imageUrls is list
+                    && request.resource.data.imageUrls.size() <= 10))
           )
         );
 
-        // Delete: salesforce instructor only (dashboard action; audited via a
-        // Cloud Function in a later phase). Students/anon cannot delete.
-        allow delete: if isSalesforce();
+        // Delete: an instructor OF THIS SESSION only (dashboard action; audited
+        // via a Cloud Function in a later phase). Students/anon cannot delete,
+        // and neither can a salesforce user with no relationship to the session.
+        allow delete: if isSalesforce() && instructsSession(sessionId);
       }
 
       // Anonymous student dashboard feedback (path implies session; no email stored).

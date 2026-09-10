@@ -12,6 +12,11 @@ import { IMAGE_MAX_EDGE, IMAGE_JPEG_QUALITY } from '../../../constants/app.js';
 import { extractImageUrlForQuestionPaste } from '../../../lib/clipboardImagePaste.js';
 import useInstructorStore from '../../store/useInstructorStore.js';
 import { SESSION_SIDEBAR_NOTES_MAX, SESSION_NOTE_LINKS_MAX, getSessionNotesFromDoc } from '../../../lib/sessionNotes.js';
+import {
+  mergeSessionNotes,
+  notesDraftIsDirty,
+  remoteNotesChangedSinceBase,
+} from '../../lib/sessionNotesDraft.js';
 import { myNameForSession } from '../../hooks/useInstructorAuth.js';
 import FormatToolbar from '../FormatToolbar.jsx';
 import SaveButton from '../SaveButton.jsx';
@@ -19,6 +24,9 @@ import SaveButton from '../SaveButton.jsx';
 function newSessionNoteId() {
   return 'sn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
 }
+
+// Thrown inside the save transaction and mapped to a message afterwards.
+const SESSION_GONE = 'sqa/session-gone';
 
 // ── Image paste helpers (same pipeline as the ask box / answer box) ──────────
 /** Extract image File objects from a paste event's clipboard data. */
@@ -68,24 +76,6 @@ function resizeImageToJpegBlob(file) {
     img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('image')); };
     img.src = u;
   });
-}
-
-// Canonical, comparable shape for a note (drops editor-only fields like
-// editorCollapsed and empty notes) so we can detect unsaved changes.
-function canonicalNotes(notes) {
-  return (notes || [])
-    .map(n => ({
-      id: String(n.id || ''),
-      title: String(n.title || '').trim(),
-      body: String(n.body || '').trim(),
-      imageUrls: Array.isArray(n.imageUrls) ? n.imageUrls.map(u => String(u).trim()).filter(Boolean) : [],
-      links: (Array.isArray(n.links) ? n.links : [])
-        .map(l => ({ url: String((l && (l.url || l.href)) || '').trim(), label: String((l && (l.label || l.name)) || '').trim() }))
-        .filter(l => /^https?:\/\//i.test(l.url)),
-      show: n.show !== false,
-      instructor: String(n.instructor || '').trim(),
-    }))
-    .filter(n => n.title || n.body || n.imageUrls.length || n.links.length);
 }
 
 function NoteCard({ note, index, onUpdate, onRemove, onToggleCollapse, storage, sessionCode, isDemoMode, showToast }) {
@@ -342,11 +332,13 @@ export default function SessionNotesEditor() {
   const setAllSessions = useInstructorStore(s => s.setAllSessions);
   const sessionNotesDraft = useInstructorStore(s => s.sessionNotesDraft);
   const setSessionNotesDraft = useInstructorStore(s => s.setSessionNotesDraft);
+  const setSessionNotesBase = useInstructorStore(s => s.setSessionNotesBase);
   const sessionNoteShow = useInstructorStore(s => s.sessionNoteShow);
   const setSessionNoteShow = useInstructorStore(s => s.setSessionNoteShow);
   const currentInstructor = useInstructorStore(s => s.currentInstructor);
   const instructorOwnerId = useInstructorStore(s => s.instructorOwnerId);
   const instructorLegacyOwnerId = useInstructorStore(s => s.instructorLegacyOwnerId);
+  const instructorEmail = useInstructorStore(s => s.instructorEmail);
   const showToast = useInstructorStore(s => s.showToast);
 
   const editorRef = useRef(null);
@@ -354,13 +346,7 @@ export default function SessionNotesEditor() {
   // Unsaved-changes detection: compare the current draft (and master show toggle)
   // to the saved session doc.
   const activeSession = allSessions.find(x => x.id === activeSessionCode);
-  const savedShow = activeSession ? activeSession.sessionNoteShow !== false : true;
-  const savedCanon = activeSession ? canonicalNotes(getSessionNotesFromDoc(activeSession)) : [];
-  const draftCanon = canonicalNotes(sessionNotesDraft);
-  const dirty = !!activeSession && (
-    sessionNoteShow !== savedShow ||
-    JSON.stringify(draftCanon) !== JSON.stringify(savedCanon)
-  );
+  const dirty = notesDraftIsDirty(activeSession, sessionNotesDraft, sessionNoteShow);
 
   // Wire HTML5 drag-and-drop for reordering
   useEffect(() => {
@@ -439,7 +425,11 @@ export default function SessionNotesEditor() {
       return;
     }
     const activeSession = allSessions.find(s => s.id === activeSessionCode);
-    const myName = myNameForSession(activeSession, currentInstructor, instructorOwnerId, instructorLegacyOwnerId);
+    const myName = myNameForSession(activeSession, currentInstructor, {
+      ownerId: instructorOwnerId,
+      legacyOwnerId: instructorLegacyOwnerId,
+      email: instructorEmail,
+    });
     const collapsed = sessionNotesDraft.map(n => ({ ...n, editorCollapsed: true }));
     setSessionNotesDraft([
       ...collapsed,
@@ -476,6 +466,34 @@ export default function SessionNotesEditor() {
     ));
   };
 
+  // After a successful save the MERGED array is the truth, not the local draft: it
+  // can carry a note a co-instructor added while this editor was open.
+  const applySavedNotesLocally = (savedNotes) => {
+    const latest = useInstructorStore.getState();
+    setAllSessions(latest.allSessions.map(s => (
+      s.id === activeSessionCode
+        ? {
+            ...s,
+            sessionNoteShow,
+            sessionNotes: savedNotes,
+            sessionNoteTitle: '',
+            sessionNoteBody: '',
+            sessionNoteImageUrls: [],
+          }
+        : s
+    )));
+    const collapsedById = new Map(latest.sessionNotesDraft.map(n => [n.id, n.editorCollapsed]));
+    setSessionNotesDraft(savedNotes.map((n, i) => ({
+      ...n,
+      imageUrls: [...(n.imageUrls || [])],
+      links: (n.links || []).map(l => ({ url: l.url, label: l.label || '' })),
+      editorCollapsed: collapsedById.has(n.id)
+        ? collapsedById.get(n.id)
+        : (savedNotes.length > 1 ? i !== savedNotes.length - 1 : false),
+    })));
+    setSessionNotesBase(savedNotes);
+  };
+
   const save = async () => {
     if (!activeSessionCode) { showToast('Select a session first.'); return false; }
 
@@ -496,22 +514,15 @@ export default function SessionNotesEditor() {
         };
       });
 
-    const payload = {
+    const basePayload = {
       sessionNoteShow,
-      sessionNotes: persistNotes,
       sessionNoteTitle: '',
       sessionNoteBody: '',
       sessionNoteImageUrls: [],
-      sessionNoteUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
 
     if (isDemoMode) {
-      const updated = allSessions.map(s =>
-        s.id === activeSessionCode
-          ? { ...s, sessionNoteShow, sessionNotes: persistNotes, sessionNoteTitle: '', sessionNoteBody: '', sessionNoteImageUrls: [] }
-          : s
-      );
-      setAllSessions(updated);
+      applySavedNotesLocally(persistNotes);
       showToast('Session notes updated (demo).');
       return true;
     }
@@ -523,17 +534,41 @@ export default function SessionNotesEditor() {
       showToast('Sign in with your salesforce.com Google account to save notes.');
       return false;
     }
+
+    const base = useInstructorStore.getState().sessionNotesBase;
+    let mergedNotes = persistNotes;
+    let remoteChanged = false;
     try {
-      await db.collection('sessions').doc(activeSessionCode).update(payload);
-      const updated = allSessions.map(s =>
-        s.id === activeSessionCode
-          ? { ...s, sessionNoteShow, sessionNotes: persistNotes, sessionNoteTitle: '', sessionNoteBody: '', sessionNoteImageUrls: [] }
-          : s
-      );
-      setAllSessions(updated);
-      showToast('Session notes saved.');
+      // Firestore transaction: sessionNotes is one array field, so writing the local
+      // draft over the top loses whatever a co-instructor saved in between. The array
+      // is re-read here and merged by note id (see mergeSessionNotes for the
+      // deletion rule). The callback can run more than once, so everything derived
+      // from the server copy is recomputed on each attempt.
+      await db.runTransaction(async (tx) => {
+        const ref = db.collection('sessions').doc(activeSessionCode);
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error(SESSION_GONE);
+        const remote = getSessionNotesFromDoc(snap.data() || {});
+        remoteChanged = remoteNotesChangedSinceBase(base, remote);
+        mergedNotes = mergeSessionNotes({ base, remote, draft: persistNotes });
+        tx.update(ref, {
+          ...basePayload,
+          sessionNotes: mergedNotes,
+          sessionNoteUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+      applySavedNotesLocally(mergedNotes);
+      if (remoteChanged) {
+        showToast('Session notes saved. A co-instructor had also changed notes, so both sets were kept — check the list.');
+      } else {
+        showToast('Session notes saved.');
+      }
       return true;
     } catch (e) {
+      if (e && e.message === SESSION_GONE) {
+        showToast('That session no longer exists, so the notes were not saved.');
+        return false;
+      }
       console.warn('Save session notes failed:', e);
       showToast('Could not save your notes. Try again.');
       return false;

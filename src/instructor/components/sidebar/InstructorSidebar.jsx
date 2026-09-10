@@ -149,8 +149,6 @@ export default function InstructorSidebar() {
     const track = document.getElementById('instr-sidebar-resizer-track');
     const resizer = document.getElementById('instr-sidebar-resizer');
     if (!layout || !track || !resizer) return;
-    if (track.dataset.instrSidebarInit === '1') return;
-    track.dataset.instrSidebarInit = '1';
 
     let drag = null;
 
@@ -165,7 +163,7 @@ export default function InstructorSidebar() {
       applyToDom(layout);
     };
 
-    track.addEventListener('pointerdown', (e) => {
+    const onPointerDown = (e) => {
       if (e.button !== 0 || sidebarIsStacked()) return;
       e.preventDefault();
       const side = document.getElementById('instr-side-panel');
@@ -182,21 +180,18 @@ export default function InstructorSidebar() {
       drag = { startX: e.clientX, startW, lastW: startW, pointerId: e.pointerId };
       document.body.classList.add('instr-sidebar-is-resizing');
       try { track.setPointerCapture(e.pointerId); } catch (e2) {}
-    });
+    };
 
-    track.addEventListener('pointermove', (e) => {
+    const onPointerMove = (e) => {
       if (!drag) return;
       const nw = clampW(drag.startW + (e.clientX - drag.startX));
       drag.lastW = nw;
       layout.classList.remove('app-body--sidebar-collapsed');
       try { localStorage.removeItem(INSTR_SIDEBAR_LS_COLLAPSED); } catch (e3) {}
       layout.style.setProperty('--instr-sidebar-px', `${nw}px`);
-    });
+    };
 
-    track.addEventListener('pointerup', endDrag);
-    track.addEventListener('pointercancel', endDrag);
-
-    resizer.addEventListener('dblclick', (e) => {
+    const onDblClick = (e) => {
       if (sidebarIsStacked() || drag) return;
       e.preventDefault();
       const collapsed = layout.classList.contains('app-body--sidebar-collapsed');
@@ -210,9 +205,9 @@ export default function InstructorSidebar() {
         try { localStorage.setItem(INSTR_SIDEBAR_LS_COLLAPSED, '1'); } catch (e2) {}
       }
       applyToDom(layout);
-    });
+    };
 
-    resizer.addEventListener('keydown', (e) => {
+    const onKeyDown = (e) => {
       if (sidebarIsStacked()) return;
       const maxPx = getMaxPx();
       let cur = parseInt(layout.style.getPropertyValue('--instr-sidebar-px'), 10);
@@ -261,19 +256,37 @@ export default function InstructorSidebar() {
         }
         applyToDom(layout);
       }
-    });
+    };
 
     let resizeTimer = null;
     const onResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => applyToDom(layout), 120);
     };
+
+    track.addEventListener('pointerdown', onPointerDown);
+    track.addEventListener('pointermove', onPointerMove);
+    track.addEventListener('pointerup', endDrag);
+    track.addEventListener('pointercancel', endDrag);
+    resizer.addEventListener('dblclick', onDblClick);
+    resizer.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
 
     applyToDom(layout);
 
+    // Every listener is removed here, and there is no dataset "already initialised"
+    // flag: that flag survived unmount, so StrictMode's second effect pass bailed out
+    // and left the app with pass 1's pointer listeners and no resize listener at all.
     return () => {
+      track.removeEventListener('pointerdown', onPointerDown);
+      track.removeEventListener('pointermove', onPointerMove);
+      track.removeEventListener('pointerup', endDrag);
+      track.removeEventListener('pointercancel', endDrag);
+      resizer.removeEventListener('dblclick', onDblClick);
+      resizer.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onResize);
+      clearTimeout(resizeTimer);
+      document.body.classList.remove('instr-sidebar-is-resizing');
     };
   }, []);
 

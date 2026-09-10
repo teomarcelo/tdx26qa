@@ -66,7 +66,7 @@ export default function LoginScreen() {
           </p>
 
           <div className="field">
-            <label>Name students see <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--text-light)' }}>(optional)</span></label>
+            <label htmlFor="signin-name">Name students see <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--text-light)' }}>(optional)</span></label>
             <input
               id="signin-name"
               type="text"
@@ -85,7 +85,9 @@ export default function LoginScreen() {
             <GoogleGlyph />
             {googleLoading ? 'Opening Google…' : 'Continue with Google'}
           </button>
-          {loginError && <p className="error-msg">{loginError}</p>}
+          {/* Rendered only when there is a message, so it never announces an empty
+              alert on first paint. */}
+          {loginError && <p className="error-msg" role="alert">{loginError}</p>}
 
           <DemoButton onClick={handleDemoMode} />
         </div>

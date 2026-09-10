@@ -8,7 +8,12 @@
  * vanilla positioning logic in useEffect.
  */
 import { useEffect, useRef } from 'react';
-import { emojiSearchText } from '../../lib/emojiData.js';
+import {
+  emojiKeywordsReady,
+  getEmojiIndex,
+  loadEmojiKeywords,
+  subscribeEmojiKeywords,
+} from '../../lib/emojiData.js';
 
 // ── Emoji data ─────────────────────────────────────────────────
 const FORMAT_EMOJI_PICKER_RAW = "😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙🥲😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕😟🙁☹😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾👋🤚🖐✋🖖👌🤌🤏✌🤞🤟🤘🤙👈👉👆🖕👇☝👍👎✊👊🤛🤜👏🙌👐🤲🤝🙏✍💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🫀🫁🦷🦴👀👁👅👄❤🧡💛💚💙💜🖤🤍🤎💔❣💕💞💓💗💖💘💝💟☮✝☪🕉☸✡🔯🪄🪅🎴🎭🖼🎨🔮🧿🐵🐒🦍🦧🐶🐕🦮🐩🐺🦊🦝🐱🐈🦁🐯🐅🐆🐴🐎🦄🦓🦌🦬🐮🐂🐃🐄🐷🐖🐗🐽🐏🐑🐐🐪🐫🦙🦒🐘🦣🦏🦛🐭🐁🐀🐹🐰🐇🐿🦫🦔🦇🐻🐨🐼🐾🦃🐔🐓🐣🐤🐥🐦🐧🕊🦅🦆🦢🦉🦤🪶🦩🦚🦜🐸🐊🐢🦎🐍🐲🐉🦕🦖🐳🐋🐬🦭🐟🐠🐡🦈🐙🐚🪸🐌🦋🐛🐜🐝🪲🐞🦗🪳🕷🕸🦂🦟🪰🪱🦠💐🌸💮🌹🥀🌺🌻🌼🌷🪻🌱🪴🌲🌳🌴🌵🌾🌿☘🍀🍁🍂🍃🪹🪺🍄🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🍞🥐🥖🫓🥨🥯🥞🧇🧀🍖🍗🥩🥓🍔🍟🍕🌭🥪🌮🌯🫔🥙🧆🥚🍳🥘🍲🫕🥣🥗🍿🧈🧂🥫🍱🍘🍙🍚🍛🍜🍝🍠🍢🍣🍤🍥🥮🍡🥟🥠🥡🦀🦞🦐🦑🦪🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯🍼🥛☕🫖🍵🍶🍾🍷🍸🍹🍺🍻🥂🥃🥤🧋🧃🧉🧊🥢🍽🍴🥄🔪🫙🌍🌎🌏🌐🗺🧭🏔⛰🌋🗻🏕🏖🏜🏝🏞🏟🏛🏗🧱🪨🪵🛖🏘🏚🏠🏡🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🛕🕍⛩🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉♨🎠🛝🎡🎢💈🎪🚂🚃🚄🚅🚆🚇🚈🚉🚊🚝🚞🚋🚌🚍🚎🚐🚑🚒🚓🚔🚕🚖🚗🚘🚙🛻🚚🚛🚜🏎🏍🛵🦽🦼🛺🚲🛴🛹🛼🚏🛣🛤⛽🚨🚥🚦🛑🚧⚓🛟⛵🛶🚤🛳⛴🛥🚢✈🛩🛫🛬🪂💺🚁🚟🚠🚡🛰🚀🛸🪐🌠🌌⚽🏀🏈⚾🥎🎾🏐🏉🥏🎱🪀🏓🏸🏒🏑🥍🏏🪃🥅⛳🪁🏹🎣🤿🥊🥋🎽🛷⛸🥌🎿⛷🏂🏋🤼🤸🤺⛹🤹🧘🏌🏇🧗🚵🚴🏆🥇🥈🥉🏅🎖🏵🎗🎫🎟🩰🎬🎤🎧🎼🎹🥁🪘🎷🎺🎸🪕🎻🪈🎲♟🎯🎳🎮🕹🎰🧩📱📲☎📞📟📠🔋🪫🔌💻🖥🖨⌨🖱🖲💽💾💿📀🧮🎥🎞📽📺📷📸📹📼🔍🔎🕯💡🔦🏮🪔📔📕📖📗📘📙📚📓📒📃📜📄📰🗞📑🔖🏷💰🪙💴💵💶💷💸💳🧾✉📧📨📩📤📥📦📫📪📬📭📮🗳✏✒🖋🖊🖌🖍📝💼📁📂🗂📅📆🗒🗓📇📈📉📊📋📌📍📎🖇📏📐✂🗃🗄🗑🔒🔓🔏🔐🔑🗝🔨🪓⛏⚒🛠🗡⚔🔫🛡🔧🪛🔩⚙🗜⚖🦯🔗⛓🪝🧰🧲🪜💯💢💥💫💦💨🕳💬🗨🗯💭💤🔔🔕📣📢📿🏧🚮🚰♿🚹🚺🚻🚼🚾🛂🛃🛄🛅⚠🚸⛔🚫🚳🚭🚯🚱🚷📵🔞☢☣⬆↗➡↘⬇↙⬅↖↕↔↩↪⤴⤵🔃🔄🔙🔚🔛🔜🔝🛐⚛☯🕎♈♉♊♋♌♍♎♏♐♑♒♓⛎🔀🔁🔂▶⏩⏭⏯◀⏪⏮🔼⏫🔽⏬⏸⏹⏺⏏🎦🔅🔆📶📳📴♀♂⚧✖➕➖➗🟰♾‼⁉❓❔❕❗〰💱💲⚕♻❇✳❎🆎🆑🆘📛🔠🔡🔢🔣🔤⌚⏰⏱⏲🕰🕛🕧🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌝🌞⭐🌟☀🌤⛅🌥☁🌦🌧⛈🌩🌨❄☃⛄🌬🌪🌫🌈☂☔⛱⚡🔥💧🌊🎃🎄🎆🎇🧨✨🎈🎉🎊🎋🎍🎎🎏🎐🎑🧧🎀🎁🧸🪆🃏🀄";
@@ -112,21 +117,80 @@ export function insertEmoji(textareaId, ch) {
 
 // ── Emoji picker grid portal ───────────────────────────────────
 
+function emojiCellHtml(ch, targetId, searchText) {
+  return `<button type="button" class="fmt-btn fmt-emoji fmt-emoji-picker-cell" style="${FMT_EMOJI_PICKER_INLINE_STYLE}" data-emoji-target="${escAttr(targetId)}" data-ch="${escAttr(ch)}" data-search="${escAttr(searchText)}" title="Insert" aria-label="Insert emoji"><span class="fmt-emoji-char">${ch}</span></button>`;
+}
+
+/**
+ * Write the keyword text onto cells that were built before the dataset arrived,
+ * then replay any query already in the search box. Dashboard filters off the
+ * data-search attribute on each cell and re-filters on 'input', so re-dispatching
+ * the event is what makes a mid-load query correct itself.
+ */
+function applyEmojiKeywordsToGrid(grid) {
+  if (!grid || !grid.isConnected || !emojiKeywordsReady()) return;
+  const index = getEmojiIndex(FORMAT_EMOJI_PICKER_CHARS);
+  grid.querySelectorAll('.fmt-emoji-picker-cell').forEach(cell => {
+    cell.setAttribute('data-search', index.get(cell.getAttribute('data-ch')) || '');
+  });
+  const shell = grid.closest('.fmt-emoji-grid-shell');
+  const input = shell && shell.querySelector('.fmt-emoji-search-input');
+  if (input && input.value) input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 /** EmojiPickerGrid — fills the grid and portals it to body.
  *  Kept as a separate component so it can be portaled. */
 function EmojiPickerGrid({ targetId, detailsRef }) {
   const gridRef = useRef(null);
+  const filledForRef = useRef(null);
 
   useEffect(() => {
-    // Fill grid with emoji buttons
     const grid = gridRef.current;
-    if (!grid) return;
-    grid.innerHTML = FORMAT_EMOJI_PICKER_CHARS.map(ch =>
-      `<button type="button" class="fmt-btn fmt-emoji fmt-emoji-picker-cell" style="${FMT_EMOJI_PICKER_INLINE_STYLE}" data-emoji-target="${escAttr(targetId)}" data-ch="${escAttr(ch)}" data-search="${escAttr(emojiSearchText(ch))}" title="Insert" aria-label="Insert emoji"><span class="fmt-emoji-char">${ch}</span></button>`
-    ).join('');
+    const details = detailsRef.current;
+    if (!grid || !details) return;
 
-    // Ensure shell wrapper exists
-    ensureShell(grid, detailsRef.current);
+    // Filling is deferred to the first open. An instructor page renders one
+    // toolbar per question plus one per session note, so building the cells on
+    // mount put ~11k buttons in the DOM — and ran an 1,035-glyph keyword pass per
+    // toolbar — for a panel that is opened at most once.
+    function fillGrid() {
+      if (filledForRef.current === targetId) return;
+      filledForRef.current = targetId;
+      const index = getEmojiIndex(FORMAT_EMOJI_PICKER_CHARS);
+      grid.innerHTML = FORMAT_EMOJI_PICKER_CHARS
+        .map(ch => emojiCellHtml(ch, targetId, index.get(ch) || ''))
+        .join('');
+      ensureShell(grid, details);
+      // Nothing above waits on the network: the glyphs come from the literal, and
+      // the keyword dataset arrives in its own chunk to fill in data-search.
+      if (!emojiKeywordsReady()) loadEmojiKeywords();
+    }
+
+    function onToggle() {
+      if (details.open) fillGrid();
+    }
+
+    // A picker already open when targetId changes needs its cells rewritten now;
+    // the toggle that would have done it has been and gone. fillGrid no-ops when
+    // the cells already point at this target, so the StrictMode second pass and
+    // any unrelated re-run are free.
+    if (details.open) fillGrid();
+
+    // Activating the summary — by pointer or by keyboard — dispatches a click
+    // before <details> flips open, so filling here puts the cells in place ahead
+    // of every toggle handler, including Dashboard's layout pass. The toggle
+    // listener is the backstop for an open that never went through a click.
+    details.addEventListener('click', fillGrid);
+    details.addEventListener('toggle', onToggle);
+    // Whichever picker triggered the fetch, every already-filled grid needs its
+    // data-search backfilled when the keywords land.
+    const unsubscribe = subscribeEmojiKeywords(() => applyEmojiKeywordsToGrid(grid));
+
+    return () => {
+      details.removeEventListener('click', fillGrid);
+      details.removeEventListener('toggle', onToggle);
+      unsubscribe();
+    };
     // detailsRef is a useRef object owned by the parent, so it is stable and
     // never re-runs this effect on its own.
   }, [targetId, detailsRef]);

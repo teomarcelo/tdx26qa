@@ -46,6 +46,12 @@ export async function exchangeCode(code) {
       redirect_uri: `${appUrl}/api/auth/callback`,
       grant_type: 'authorization_code',
     }).toString(),
+    // undici applies no overall request timeout, so a stalled Google response
+    // would outlive the serverless invocation budget and kill the function
+    // before the caller's catch can render a friendly error. The abort rejects
+    // with a TimeoutError instead, which that catch already handles. (The JWKS
+    // fetch is covered by jose's 5000ms default timeoutDuration.)
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

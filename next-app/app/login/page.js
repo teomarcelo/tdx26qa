@@ -8,12 +8,23 @@ const ERROR_MESSAGES = {
   invalid_token:         'Sign-in verification failed. Please try again.',
   access_denied_domain:  'Only @salesforce.com accounts can access this app.',
   access_denied:         'Access denied.',
+  session_write_failed:  'Could not start your session. Please try again.',
 };
 
-export default function LoginPage({ searchParams }) {
-  const errorKey = searchParams?.error;
-  const loggedOut = searchParams?.logged_out === '1';
-  const errorMsg = errorKey ? (ERROR_MESSAGES[errorKey] ?? 'Sign-in failed. Please try again.') : null;
+const FALLBACK_ERROR = 'Sign-in failed. Please try again.';
+
+// searchParams is a Promise in Next 16; reading it without awaiting made every
+// error message silently undefined.
+export default async function LoginPage({ searchParams }) {
+  const sp = await searchParams;
+  const errorKey = sp?.error;
+  const loggedOut = sp?.logged_out === '1';
+  // The callback can put a raw Google error_description in ?error=, so only ever
+  // render a message this map owns. hasOwn also keeps inherited keys
+  // (?error=toString) from resolving to something non-renderable.
+  const errorMsg = errorKey
+    ? (Object.hasOwn(ERROR_MESSAGES, errorKey) ? ERROR_MESSAGES[errorKey] : FALLBACK_ERROR)
+    : null;
 
   return (
     <main className={styles.container}>

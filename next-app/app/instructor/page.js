@@ -1,23 +1,26 @@
 import styles from './app.module.css';
-import { getServerSession } from '../../lib/getServerSession.js';
-import { requireEnv } from '../../lib/env.js';
+import { requireEnv, getViteOrigin } from '../../lib/env.js';
 
 /**
  * Instructor app page — served protected behind auth middleware.
  *
- * Phase 1 embeds the existing Vite-built instructor app in an iframe. The
- * authenticated Google identity (name + email) is passed to the iframe so the
- * instructor app can prefill the sign-in name instead of asking for a PIN.
+ * Phase 1 embeds the existing Vite-built instructor app in an iframe. Identity
+ * is not passed through the URL: the Vite app authenticates with Firebase Auth
+ * Google sign-in and ignores any name/email query params, so sending them would
+ * only leak a verified corporate email into logs and browser history.
  * Phase 2 will inline the React components directly.
  */
+
+// Nothing on this page reads the request anymore, so it would otherwise be
+// prerendered and freeze APP_URL / VITE_APP_ORIGIN at build time. Resolve them
+// per request instead, and keep the gated surface out of any shared cache.
+export const dynamic = 'force-dynamic';
+
 export default async function InstructorPage() {
-  const user = await getServerSession();
-  const viteOrigin = process.env.VITE_APP_ORIGIN ?? 'http://localhost:5173';
+  const viteOrigin = getViteOrigin();
   const appUrl = requireEnv('APP_URL');
 
   const params = new URLSearchParams();
-  if (user?.name) params.set('sso_name', user.name);
-  if (user?.email) params.set('sso_email', user.email);
   // Absolute gateway logout URL so the iframe can navigate the top window to a real
   // sign-out (destroys the session cookie, then redirects to /login).
   params.set('sso_logout', `${appUrl}/api/auth/logout`);

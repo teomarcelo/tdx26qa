@@ -13,7 +13,12 @@ export function parseDateInputLocal(yyyyMmDd) {
   const mo = parseInt(m[2], 10) - 1;
   const d = parseInt(m[3], 10);
   const dt = new Date(y, mo, d);
-  return Number.isNaN(dt.getTime()) ? null : dt;
+  if (Number.isNaN(dt.getTime())) return null;
+  // new Date(2026, 1, 31) silently rolls forward to March 3rd, so an impossible
+  // calendar date used to render as a real one. Only accept a date the
+  // constructor did not have to move.
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== d) return null;
+  return dt;
 }
 
 /** @param {Date} d */

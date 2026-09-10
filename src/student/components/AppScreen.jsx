@@ -3,6 +3,7 @@ import { useFirebase } from '../../shared/FirebaseContext.jsx';
 import { useQuestions } from '../hooks/useQuestions.js';
 import { useUpvote } from '../hooks/useUpvote.js';
 import { useSessionStats } from '../hooks/useSessionStats.js';
+import { useFullQuestionCorpus, viewNeedsFullCorpus } from '../hooks/useFullQuestionCorpus.js';
 import AskBox from './AskBox.jsx';
 import QuestionsList from './QuestionsList.jsx';
 import QuestionToolbar from './QuestionToolbar.jsx';
@@ -53,13 +54,14 @@ export default function AppScreen({
     goNextPage,
     goPrevPage,
     goToPage,
+    refreshQuestionAfterVote,
     reset: resetQuestions,
   } = useQuestions(sessionCode, pollSkipUntilRef);
 
   // --- Upvote ---
   const { lockedIds, handleUpvote } = useUpvote(pollSkipUntilRef);
 
-  // --- All cached questions (for stats + full-corpus search) ---
+  // --- All cached questions (stats fallback + newest-page overlay) ---
   // Memoized: useSessionStats keys an aggregate Firestore query off this value,
   // so rebuilding the array on every render would refetch (and bill) forever.
   const allCached = useMemo(() => {
@@ -77,6 +79,28 @@ export default function AppScreen({
   const [feedView, setFeedView] = useState('qa');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
+
+  // --- Full session corpus (search, votes sort, Pinned/Answered/Unanswered) ---
+  // The page cache holds ten questions, so filtering it for these views returned
+  // confidently wrong answers: "Pinned" read as empty while a question was pinned
+  // on page two, and "Top voted" ranked the ten newest against each other. These
+  // views now read the session, not the page.
+  const needsFullCorpus = viewNeedsFullCorpus(filter, sort, searchQuery);
+  // Coarse on purpose: which view is active, not what is typed in the search box.
+  // Keying the fetch on the query text would re-read the session on every letter.
+  const corpusRequestKey = `${filter}|${sort}|${searchQuery ? 'search' : 'nosearch'}`;
+  const { corpus, corpusLoading, corpusTruncated, patchCorpusQuestion } =
+    useFullQuestionCorpus(sessionCode, db, needsFullCorpus, corpusRequestKey);
+
+  // Page 0 is driven by a live listener, so the cached pages carry fresher votes
+  // and statuses than the one-shot corpus read. They win on conflict.
+  const fullCorpus = useMemo(() => {
+    if (!needsFullCorpus || !corpus.length) return allCached;
+    const m = new Map();
+    corpus.forEach((q) => m.set(q.id, q));
+    allCached.forEach((q) => m.set(q.id, q));
+    return Array.from(m.values());
+  }, [needsFullCorpus, corpus, allCached]);
 
   // --- Edit modal ---
   const [editingQuestion, setEditingQuestion] = useState(null);
@@ -162,23 +186,42 @@ export default function AppScreen({
   }
 
   // --- Upvote wiring ---
+  /**
+   * Reconcile the vote tally after a successful write.
+   *
+   * fetchFirstPage() is only safe from page 0: it ends in commitPage0, which
+   * calls setCurrentPage(0), so calling it from an older page threw the student
+   * back to the newest questions and lost their place. Anywhere else, re-read
+   * just the voted question and patch it where it is cached.
+   */
+  async function handleVoteSaved(id) {
+    const onFirstPage = currentPage === 0;
+    if (onFirstPage) {
+      fetchFirstPage();
+      // Page 0 covers the visible feed; the corpus may hold this question too.
+      if (!needsFullCorpus) return;
+    }
+    const fresh = await refreshQuestionAfterVote(id);
+    if (fresh) patchCorpusQuestion(id, () => fresh);
+  }
+
   function onUpvote(id) {
     const q =
       allQuestions.find((x) => x.id === id) ||
-      allCached.find((x) => x.id === id);
-    handleUpvote(id, q, userId, sessionCode, () => fetchFirstPage(), showToast);
+      fullCorpus.find((x) => x.id === id);
+    handleUpvote(id, q, userId, sessionCode, () => handleVoteSaved(id), showToast);
   }
 
   // --- Edit ---
   function handleOpenEdit(id) {
     const q =
       allQuestions.find((x) => x.id === id) ||
-      allCached.find((x) => x.id === id);
+      fullCorpus.find((x) => x.id === id);
     if (!q) return;
     setEditingQuestion(q);
   }
 
-  async function handleSaveEdit(text) {
+  async function handleSaveEdit({ text, imageUrls }) {
     if (!editingQuestion) return;
     const key = myQsKey(sessionCode);
     try {
@@ -189,9 +232,10 @@ export default function AppScreen({
         return;
       }
     } catch (e) {}
-    // Demo mode: update the question text in the in-memory store; never call db.
+    const urls = Array.isArray(imageUrls) ? imageUrls : [];
+    // Demo mode: update the in-memory store; never call db or Storage.
     if (isDemoMode) {
-      updateDemoQuestion(editingQuestion.id, (q) => ({ ...q, text }));
+      updateDemoQuestion(editingQuestion.id, (q) => ({ ...q, text, imageUrls: urls }));
       setEditingQuestion(null);
       showToast('Question updated.');
       return;
@@ -202,12 +246,17 @@ export default function AppScreen({
         .doc(sessionCode)
         .collection('questions')
         .doc(editingQuestion.id)
-        .update({ text });
+        .update({ text, imageUrls: urls });
       setEditingQuestion(null);
       showToast('Question updated.');
       fetchFirstPage();
     } catch (e) {
-      showToast('Could not save. Check your connection.');
+      const code = String((e && (e.code || e.name)) || '').toLowerCase();
+      if (code.includes('permission-denied') || code.includes('unauthenticated')) {
+        showToast('Could not save this edit. You can only change your own questions.');
+      } else {
+        showToast('Could not save. Check your connection.');
+      }
     }
   }
 
@@ -220,7 +269,9 @@ export default function AppScreen({
 
   const sessionTitle = studentSessionDisplayTitle(currentSession) || 'Session';
 
-  const showPagination = !searchQuery && !!(sessionCode && db && questionPages.length > 0);
+  // Hidden for every corpus-driven view, not just search: those views render the
+  // whole session in one list, so page numbers would not govern what is on screen.
+  const showPagination = !needsFullCorpus && !!(sessionCode && db && questionPages.length > 0);
 
   return (
     <div id="app-screen" style={{ display: 'block' }}>
@@ -324,7 +375,9 @@ export default function AppScreen({
               ) : (
                 <QuestionsList
                   questions={allQuestions}
-                  allCachedQuestions={allCached}
+                  allCachedQuestions={fullCorpus}
+                  corpusLoading={corpusLoading}
+                  corpusTruncated={corpusTruncated}
                   searchQuery={searchQuery}
                   filter={filter}
                   sort={sort}
@@ -381,6 +434,10 @@ export default function AppScreen({
       {editingQuestion && (
         <EditModal
           question={editingQuestion}
+          sessionCode={sessionCode}
+          userId={userId}
+          isDemoMode={isDemoMode}
+          showToast={showToast}
           onSave={handleSaveEdit}
           onClose={() => setEditingQuestion(null)}
         />

@@ -10,6 +10,24 @@ import {
   DEMO_SESSIONS_HIDDEN_KEY,
 } from './useInstructorAuth.js';
 
+function sessionCreatedAtMs(s) {
+  const raw = s && s.createdAt;
+  if (!raw) return 0;
+  if (typeof raw.toDate === 'function') {
+    try { const d = raw.toDate(); return d instanceof Date && !isNaN(d) ? d.getTime() : 0; } catch (e) { return 0; }
+  }
+  const d = raw instanceof Date ? raw : new Date(raw);
+  return isNaN(d) ? 0 : d.getTime();
+}
+
+function mergeSessionLists(...lists) {
+  const byId = new Map();
+  lists.flat().forEach((s) => {
+    if (s && s.id) byId.set(s.id, s);
+  });
+  return Array.from(byId.values()).sort((a, b) => sessionCreatedAtMs(b) - sessionCreatedAtMs(a));
+}
+
 export function useSessions() {
   const { db } = useFirebase();
   const unsubRef = useRef(null);
@@ -17,6 +35,7 @@ export function useSessions() {
   const currentInstructor = useInstructorStore(s => s.currentInstructor);
   const instructorOwnerId = useInstructorStore(s => s.instructorOwnerId);
   const instructorLegacyOwnerId = useInstructorStore(s => s.instructorLegacyOwnerId);
+  const instructorEmail = useInstructorStore(s => s.instructorEmail);
   const isDemoMode = useInstructorStore(s => s.isDemoMode);
 
   // Load sessions when instructor logs in
@@ -45,51 +64,58 @@ export function useSessions() {
     const sessionsQuery = ownerIds.length > 1
       ? db.collection('sessions').where('ownerId', 'in', ownerIds)
       : db.collection('sessions').where('ownerId', '==', ownerId);
+    const myEmail = String(instructorEmail || '').trim().toLowerCase();
 
-    const unsub = sessionsQuery
-      .onSnapshot(snap => {
-        const owned = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Sort by createdAt descending in JS (no orderBy to avoid composite index)
-        owned.sort((a, b) => {
-          const at = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
-          const bt = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
-          return bt - at;
+    const ownedRef = { current: [] };
+    const listedRef = { current: [] };
+    const joinedRef = { current: [] };
+    const hiddenRef = { current: new Set() };
+    let cancelled = false;
+    let hiddenReady = false;
+
+    const publish = () => {
+      if (cancelled || !hiddenReady) return;
+      const merged = mergeSessionLists(ownedRef.current, listedRef.current, joinedRef.current)
+        .filter(s => s && !hiddenRef.current.has(s.id));
+      useInstructorStore.getState().setAllSessions(merged);
+      useInstructorStore.getState().setInstructorSessionsHydrated(true);
+      tryRestoreActiveSession(merged);
+    };
+
+    const loadJoinedAndHidden = () => {
+      Promise.all(ownerIds.map(id => db.collection('instructors').doc(id).get())).then(docs => {
+        if (cancelled) return;
+        const joinedSet = new Set();
+        const hiddenArr = [];
+        docs.forEach(doc => {
+          if (!doc.exists) return;
+          const d = doc.data() || {};
+          if (Array.isArray(d.joinedSessions)) d.joinedSessions.forEach(c => joinedSet.add(c));
+          if (Array.isArray(d.sessionsHiddenFromList)) hiddenArr.push(...d.sessionsHiddenFromList);
         });
-
-        // Load joined sessions + hidden list from the instructor doc(s). Read both the
-        // stable and legacy ids and merge, since older data lives under the legacy id.
-        Promise.all(ownerIds.map(id => db.collection('instructors').doc(id).get())).then(docs => {
-          const joinedSet = new Set();
-          const hiddenArr = [];
-          docs.forEach(doc => {
-            if (!doc.exists) return;
-            const d = doc.data() || {};
-            if (Array.isArray(d.joinedSessions)) d.joinedSessions.forEach(c => joinedSet.add(c));
-            if (Array.isArray(d.sessionsHiddenFromList)) hiddenArr.push(...d.sessionsHiddenFromList);
+        hiddenRef.current = new Set(hiddenArr);
+        hiddenReady = true;
+        const joinedCodes = [...joinedSet];
+        if (!joinedCodes.length) {
+          joinedRef.current = [];
+          publish();
+          return;
+        }
+        Promise.all(joinedCodes.map(code => db.collection('sessions').doc(code).get()))
+          .then(docs => {
+            if (cancelled) return;
+            joinedRef.current = docs
+              .filter(d => d.exists)
+              .map(d => ({ id: d.id, ...d.data() }));
+            publish();
           });
-          const joinedCodes = [...joinedSet];
-          const hiddenSet = new Set(hiddenArr);
-          const applyHidden = (arr) => arr.filter(s => s && !hiddenSet.has(s.id));
+      });
+    };
 
-          const mergeAndUpdate = (joined) => {
-            const merged = applyHidden([...owned, ...joined]);
-            useInstructorStore.getState().setAllSessions(merged);
-            useInstructorStore.getState().setInstructorSessionsHydrated(true);
-            tryRestoreActiveSession(merged);
-          };
-
-          if (!joinedCodes.length) {
-            mergeAndUpdate([]);
-            return;
-          }
-          Promise.all(joinedCodes.map(code => db.collection('sessions').doc(code).get()))
-            .then(docs => {
-              const joined = docs
-                .filter(d => d.exists && !owned.find(o => o.id === d.id))
-                .map(d => ({ id: d.id, ...d.data() }));
-              mergeAndUpdate(joined);
-            });
-        });
+    const unsubOwned = sessionsQuery
+      .onSnapshot(snap => {
+        ownedRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        loadJoinedAndHidden();
       }, err => {
         console.error('loadSessions error:', err);
         useInstructorStore.getState().setAllSessions([]);
@@ -97,14 +123,33 @@ export function useSessions() {
         useInstructorStore.getState().showToast('Could not load your sessions. Check your connection.');
       });
 
-    unsubRef.current = unsub;
+    // After a lead transfer, ownerId no longer matches the previous owner, so
+    // the query above would drop the session. instructorEmails still lists them.
+    let unsubListed = () => {};
+    if (myEmail) {
+      unsubListed = db.collection('sessions')
+        .where('instructorEmails', 'array-contains', myEmail)
+        .onSnapshot(snap => {
+          listedRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          publish();
+        }, err => {
+          console.warn('listed sessions listener error:', err);
+        });
+    }
+
+    unsubRef.current = () => {
+      cancelled = true;
+      unsubOwned();
+      unsubListed();
+    };
     return () => {
       if (unsubRef.current) {
         unsubRef.current();
         unsubRef.current = null;
       }
     };
-  }, [currentInstructor, instructorOwnerId, instructorLegacyOwnerId, isDemoMode, db]);
+  }, [currentInstructor, instructorOwnerId, instructorLegacyOwnerId, instructorEmail, isDemoMode, db]);
+
 
   function loadDemoSessions() {
     const hidden = getDemoHiddenSessionIds();

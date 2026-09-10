@@ -5,6 +5,7 @@ import { ensureInstructorAuth } from '../../lib/auth.js';
 import useInstructorStore from '../store/useInstructorStore.js';
 import { SESSION_JOIN_PREFIX } from '../../lib/sessionCode.js';
 import { emailToId, nameToId } from '../hooks/useInstructorAuth.js';
+import { instructorDirectoryEntry } from '../../lib/sessionInstructors.js';
 import { DEFAULT_STUDENT_ORG_CLAIM_URL } from '../../lib/sessionLaunch.js';
 import SaveButton from './SaveButton.jsx';
 import { sessionDateInputToDisplay } from '../../lib/sessionDateLocal.js';
@@ -74,16 +75,44 @@ export default function CreateSessionModal() {
   const [loading, setLoading] = useState(false);
 
   const tzSelectRef = useRef(null);
+  const nameInputRef = useRef(null);
+  const openerRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      setSessionName(''); setDate(''); setTime(''); setTimezone(DEFAULT_SESSION_TIMEZONE);
-      setRoom(''); setDesc(''); setOrgClaimUrl(''); setOrgClaimCopy('');
-      setSurveyUrl(''); setSurveyCopy(''); setError(''); setLoading(false);
-      // Init timezone options
-      setTimeout(() => initSessionTimezoneSelects(), 0);
-    }
-  }, [open]);
+    if (!open) return undefined;
+    setSessionName(''); setDate(''); setTime(''); setTimezone(DEFAULT_SESSION_TIMEZONE);
+    setRoom(''); setDesc(''); setOrgClaimUrl(''); setOrgClaimCopy('');
+    setSurveyUrl(''); setSurveyCopy(''); setError(''); setLoading(false);
+    // Init timezone options
+    const tzTimer = setTimeout(() => initSessionTimezoneSelects(), 0);
+
+    // Focus the first field, close on Escape, and return focus to the opener.
+    // Escape is bound in the BUBBLE phase so the image lightbox's capture-phase
+    // handler still wins while it is open.
+    openerRef.current = document.activeElement;
+    const raf = requestAnimationFrame(() => {
+      if (nameInputRef.current) {
+        try { nameInputRef.current.focus(); } catch (e) {}
+      }
+    });
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      clearTimeout(tzTimer);
+      cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', onKeyDown);
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener && typeof opener.focus === 'function') {
+        try { opener.focus(); } catch (e) {}
+      }
+    };
+  }, [open, setOpen]);
 
   if (!open) return null;
 
@@ -125,6 +154,7 @@ export default function CreateSessionModal() {
       || nameToId(currentInstructor || '');
 
     setLoading(true);
+    const directoryEntry = instructorDirectoryEntry(ownerEmail, currentInstructor || '');
     const sessionPayload = {
       sessionName: sessionName.trim(),
       instructorNames: currentInstructor || '',
@@ -132,6 +162,9 @@ export default function CreateSessionModal() {
       // Email-based ownership for the rewritten rules (owner + co-instructors).
       ownerEmail,
       instructorEmails: ownerEmail ? [ownerEmail] : [],
+      instructorDirectory: directoryEntry
+        ? { [directoryEntry.key]: directoryEntry.value }
+        : {},
       sessionDate: date ? sessionDateInputToDisplay(date) : '',
       sessionTime: time ? formatDisplayTime(time) : '',
       sessionTimezone: timezone || DEFAULT_SESSION_TIMEZONE,
@@ -184,15 +217,21 @@ export default function CreateSessionModal() {
 
   return (
     <div className="modal-overlay open">
-      <div className="modal" style={{ maxWidth: 560, maxHeight: 'min(92vh,900px)', overflowY: 'auto' }}>
-        <div className="modal-title">Create a new session</div>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-session-title"
+        style={{ maxWidth: 560, maxHeight: 'min(92vh,900px)', overflowY: 'auto' }}
+      >
+        <div className="modal-title" id="create-session-title">Create a new session</div>
         <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.1rem', lineHeight: 1.5 }}>
           Same fields as <strong>Session settings</strong> in the sidebar. A session code is generated when you create the session.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
           <div className="form-field">
-            <label>Session name</label>
-            <input className="mini-input" placeholder="e.g. Track A — Fundamentals" type="text" value={sessionName} onChange={e => setSessionName(e.target.value)} />
+            <label htmlFor="create-session-name">Session name</label>
+            <input ref={nameInputRef} id="create-session-name" className="mini-input" placeholder="e.g. Track A — Fundamentals" type="text" value={sessionName} onChange={e => setSessionName(e.target.value)} />
           </div>
           <div className="form-row form-row--session-dtz">
             <div className="form-field">
@@ -243,7 +282,7 @@ export default function CreateSessionModal() {
             <input className="mini-input" type="text" placeholder="Shown under SURVEY on the student Session card." autoComplete="off" value={surveyCopy} onChange={e => setSurveyCopy(e.target.value)} />
           </div>
         </div>
-        {error && <p className="error-msg" style={{ fontSize: '0.82rem', color: 'var(--warn)', minHeight: '1.2rem', marginBottom: '0.5rem' }}>{error}</p>}
+        {error && <p className="error-msg" role="alert" style={{ fontSize: '0.82rem', color: 'var(--warn)', minHeight: '1.2rem', marginBottom: '0.5rem' }}>{error}</p>}
         <div className="modal-footer">
           <button className="btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
           <SaveButton className="save-btn" style={{ padding: '0.55rem 1.25rem', marginTop: 0 }} onClick={handleCreate} disabled={loading}>

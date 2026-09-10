@@ -36,6 +36,13 @@ export default defineConfig({
   appType: 'mpa',
   /** Relative asset URLs so `dist/` works from any host path (e.g. GitHub Pages). */
   base: './',
+  // Default `localhost` binds [::1] only on this Mac, so 127.0.0.1:5173 and many
+  // browsers fail even though `http://localhost:5173` looks right in the Vite banner.
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+  },
   build: {
     rollupOptions: {
       input: {

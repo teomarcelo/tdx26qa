@@ -11,6 +11,7 @@ import {
   JOIN_CODE_ROW_LEGACY_TDX_CLASS,
 } from '../../lib/sessionCode.js';
 import { nameToId } from '../hooks/useInstructorAuth.js';
+import { instructorDirectoryEntry } from '../../lib/sessionInstructors.js';
 import { ensureInstructorAuth } from '../../lib/auth.js';
 import SaveButton from './SaveButton.jsx';
 
@@ -25,13 +26,40 @@ export default function JoinSessionModal() {
 
   const [error, setError] = useState('');
   const suffixRef = useRef(null);
+  const openerRef = useRef(null);
 
+  // Reset the field, focus it, close on Escape, and hand focus back to whatever
+  // opened the dialog. Escape is registered in the BUBBLE phase on purpose: the
+  // image lightbox handles Escape in the capture phase and stops propagation, so
+  // when both are open only the topmost overlay closes.
   useEffect(() => {
-    if (open && suffixRef.current) {
-      setJoinRowFromSessionCode(suffixRef.current, '');
-      setError('');
-    }
-  }, [open]);
+    if (!open) return undefined;
+    openerRef.current = document.activeElement;
+    setError('');
+    if (suffixRef.current) setJoinRowFromSessionCode(suffixRef.current, '');
+
+    const raf = requestAnimationFrame(() => {
+      if (suffixRef.current) {
+        try { suffixRef.current.focus(); } catch (e) {}
+      }
+    });
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', onKeyDown);
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener && typeof opener.focus === 'function') {
+        try { opener.focus(); } catch (e) {}
+      }
+    };
+  }, [open, setOpen]);
 
   const handleInput = () => {
     if (suffixRef.current) syncJoinSuffixInput(suffixRef.current);
@@ -68,17 +96,29 @@ export default function JoinSessionModal() {
         joinedSessions: firebase.firestore.FieldValue.arrayUnion(code),
         sessionsHiddenFromList: firebase.firestore.FieldValue.arrayRemove(code),
       };
-      db.collection('instructors').doc(ownerId).update(joinPayload).catch(() => {
-        db.collection('instructors').doc(ownerId).get().then(idoc => {
+      // Remember the session on the instructor's own doc so it comes back in "My
+      // sessions" after a reload. update() fails when the doc does not exist yet, so
+      // fall back to a merged set. Awaited and caught: this used to be fire-and-
+      // forget with an uncaught fallback chain, which produced an unhandled
+      // rejection and a session that quietly vanished on the next reload.
+      let instructorDocSaved = true;
+      try {
+        await db.collection('instructors').doc(ownerId).update(joinPayload);
+      } catch (updateErr) {
+        try {
+          const idoc = await db.collection('instructors').doc(ownerId).get();
           const d = idoc.exists ? idoc.data() : {};
           const joined = Array.isArray(d.joinedSessions) ? [...new Set([...d.joinedSessions, code])] : [code];
           const hidden = Array.isArray(d.sessionsHiddenFromList) ? d.sessionsHiddenFromList.filter(c => c !== code) : [];
-          return db.collection('instructors').doc(ownerId).set(
+          await db.collection('instructors').doc(ownerId).set(
             { joinedSessions: joined, sessionsHiddenFromList: hidden },
             { merge: true }
           );
-        });
-      });
+        } catch (setErr) {
+          console.warn('Could not record the joined session on the instructor doc:', setErr);
+          instructorDocSaved = false;
+        }
+      }
 
       // Co-instructors are automatic: register the joiner on the session roster so
       // students (and the lead) see who's teaching. Identity is verified via
@@ -100,9 +140,27 @@ export default function JoinSessionModal() {
       // Add the joiner's email to the co-instructor allow-list (rules use this).
       if (myEmail) {
         rosterUpdate.instructorEmails = firebase.firestore.FieldValue.arrayUnion(myEmail);
+        const directoryEntry = instructorDirectoryEntry(myEmail, myName);
+        if (directoryEntry) {
+          rosterUpdate[`instructorDirectory.${directoryEntry.key}`] = directoryEntry.value;
+        }
       }
+      // This write is what actually grants co-instructor access, so it is awaited and
+      // its failure is reported. Swallowing it meant "Joined session SQA-XXXX"
+      // followed by every privileged action failing mid-workshop with a sign-in
+      // message that pointed at the wrong cause.
       if (Object.keys(rosterUpdate).length) {
-        db.collection('sessions').doc(code).update(rosterUpdate).catch(() => {});
+        try {
+          await db.collection('sessions').doc(code).update(rosterUpdate);
+        } catch (rosterErr) {
+          console.warn('Join session roster update failed:', rosterErr);
+          setError(
+            rosterErr && rosterErr.code === 'permission-denied'
+              ? 'You can read this session but could not be added as a co-instructor, so answering and pinning would fail. Ask the session owner to add you.'
+              : 'Could not register you on this session. Check your connection and try again.'
+          );
+          return false;
+        }
       }
       const sessionData = { id: code, ...data, instructors: nextRoster, instructorNames: nextRoster.join(', ') };
       const latestSessions = useInstructorStore.getState().allSessions;
@@ -111,7 +169,9 @@ export default function JoinSessionModal() {
       }
       setActiveSessionCode(code);
       setOpen(false);
-      showToast('Joined session ' + code);
+      showToast(instructorDocSaved
+        ? 'Joined session ' + code
+        : `Joined ${code}, but it may not be listed after a reload. Rejoin with the code if it disappears.`);
       return true;
     } catch (e) {
       console.warn('Join session failed:', e);
@@ -123,9 +183,19 @@ export default function JoinSessionModal() {
   if (!open) return null;
 
   return (
-    <div className="modal-overlay open">
-      <div className="modal" style={{ maxWidth: 420 }}>
-        <div className="modal-title">Join a session</div>
+    <div
+      className="modal-overlay open"
+      onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="join-session-title"
+        style={{ maxWidth: 420 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-title" id="join-session-title">Join a session</div>
         <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.1rem', lineHeight: 1.5 }}>
           <strong>SQA-</strong> is fixed on the left — type the last four characters, or paste a full <strong>SQA-</strong> or legacy <strong>TDX-</strong> code.
         </p>
@@ -149,7 +219,7 @@ export default function JoinSessionModal() {
             />
           </div>
         </div>
-        {error && <p className="error-msg" style={{ fontSize: '0.82rem', color: 'var(--warn)', minHeight: '1.2rem', marginBottom: '0.5rem' }}>{error}</p>}
+        {error && <p className="error-msg" role="alert" style={{ fontSize: '0.82rem', color: 'var(--warn)', minHeight: '1.2rem', marginBottom: '0.5rem' }}>{error}</p>}
         <div className="modal-footer">
           <button className="btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
           <SaveButton className="save-btn" style={{ padding: '0.55rem 1.25rem', marginTop: 0 }} onClick={handleJoin}>Join</SaveButton>

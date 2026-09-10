@@ -12,3 +12,6 @@ export const IMAGE_MAX_EDGE = 1600;
 
 /** JPEG quality for resized paste uploads. */
 export const IMAGE_JPEG_QUALITY = 0.82;
+
+/** Max images on one question. Keep in step with firestore.rules `imageUrls.size() <= 10`. */
+export const QUESTION_IMAGE_URLS_MAX = 10;

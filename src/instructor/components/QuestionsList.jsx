@@ -70,9 +70,14 @@ export default function QuestionsList() {
     questionPages.forEach(p => { (p.questions || []).forEach(q => m.set(q.id, q)); });
     const corpus = Array.from(m.values());
 
-    // Use the full cross-page cache when searching or sorting by votes so that
-    // highly-voted older questions bubble up above newer lower-voted ones.
-    let qs = (searchQuery || currentSort === 'votes')
+    // Use the full cross-page cache when searching, when sorting by votes (so
+    // highly-voted older questions bubble up above newer lower-voted ones), and
+    // when a status filter is on. A filter scoped to the current page contradicts
+    // the session-wide count in the stats tile — 3 pending here, 7 on the next
+    // page — and hides pending questions the instructor is trying to find. The
+    // student board already filters over its full corpus; this matches it.
+    const useCorpus = !!searchQuery || currentSort === 'votes' || currentFilter !== 'all';
+    let qs = useCorpus
       ? (searchQuery ? filterCorpusByFuseSearch(corpus, searchQuery, getSearchHaystack) : [...corpus])
       : [...allQuestions];
 
@@ -100,7 +105,13 @@ export default function QuestionsList() {
   const canNextCached = currentPage < numLoaded - 1;
   const canNextFetch = !instructorOlderBeyondLoadExhausted && !!(cur && cur.endSnap && cur.questions.length >= QUESTIONS_PAGE_SIZE);
   const canNext = canNextCached || canNextFetch;
-  const showPhantomNext = !instructorOlderBeyondLoadExhausted && !!(questionPages[numLoaded - 1] && questionPages[numLoaded - 1].endSnap && questionPages[numLoaded - 1].questions.length >= QUESTIONS_PAGE_SIZE);
+  // The phantom slot loads the next page from Firestore, which only lands where its
+  // number says when the instructor is already on the last loaded page. Offering it
+  // from page 1 of 3 sent them to page 2 while the label and aria-label promised 4.
+  const lastLoaded = questionPages[numLoaded - 1];
+  const showPhantomNext = currentPage === numLoaded - 1
+    && !instructorOlderBeyondLoadExhausted
+    && !!(lastLoaded && lastLoaded.endSnap && lastLoaded.questions.length >= QUESTIONS_PAGE_SIZE);
   const totalSlots = numLoaded + (showPhantomNext ? 1 : 0);
   const maxNums = 5;
   let lo = 0, hi = totalSlots;

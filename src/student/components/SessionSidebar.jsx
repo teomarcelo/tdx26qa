@@ -163,9 +163,7 @@ export default function SessionSidebar({
     const layout = document.getElementById('student-app-layout');
     const track = document.getElementById('student-sidebar-resizer-track');
     const resizer = document.getElementById('student-sidebar-resizer');
-    if (!layout || !track || !resizer) return;
-    if (track.dataset.sidebarInit === '1') return;
-    track.dataset.sidebarInit = '1';
+    if (!layout || !track || !resizer) return undefined;
 
     layoutRef.current = layout;
     resizerRef.current = resizer;
@@ -184,7 +182,7 @@ export default function SessionSidebar({
       applyToDom(layout, resizer);
     }
 
-    track.addEventListener('pointerdown', (e) => {
+    function onPointerDown(e) {
       if (e.button !== 0) return;
       if (sidebarIsStacked()) return;
       e.preventDefault();
@@ -202,9 +200,9 @@ export default function SessionSidebar({
       drag = { startX: e.clientX, startW, lastW: startW, pointerId: e.pointerId };
       document.body.classList.add('student-sidebar-is-resizing');
       try { track.setPointerCapture(e.pointerId); } catch (e2) {}
-    });
+    }
 
-    track.addEventListener('pointermove', (e) => {
+    function onPointerMove(e) {
       if (!drag) return;
       const dx = drag.startX - e.clientX;
       const nw = clampW(drag.startW + dx);
@@ -213,19 +211,16 @@ export default function SessionSidebar({
       safeLsRemove(STUDENT_SIDEBAR_LS_COLLAPSED);
       layout.style.setProperty('--student-sidebar-px', nw + 'px');
       updateResizerAria(resizer, layout, nw, getMaxPx());
-    });
+    }
 
-    track.addEventListener('pointerup', endDrag);
-    track.addEventListener('pointercancel', endDrag);
-
-    resizer.addEventListener('dblclick', (e) => {
+    function onDblClick(e) {
       if (sidebarIsStacked()) return;
       if (drag) return;
       e.preventDefault();
       toggleCollapsed(layout, resizer);
-    });
+    }
 
-    resizer.addEventListener('keydown', (e) => {
+    function onKeyDown(e) {
       if (sidebarIsStacked()) return;
       const maxPx = getMaxPx();
       const curStr = layout.style.getPropertyValue('--student-sidebar-px');
@@ -267,18 +262,44 @@ export default function SessionSidebar({
         e.preventDefault();
         toggleCollapsed(layout, resizer);
       }
-    });
+    }
 
     let resizeTimer = null;
-    window.addEventListener('resize', () => {
+    function onWindowResize() {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => applyToDom(layout, resizer), 120);
-    });
+    }
+
+    track.addEventListener('pointerdown', onPointerDown);
+    track.addEventListener('pointermove', onPointerMove);
+    track.addEventListener('pointerup', endDrag);
+    track.addEventListener('pointercancel', endDrag);
+    resizer.addEventListener('dblclick', onDblClick);
+    resizer.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onWindowResize);
 
     applyToDom(layout, resizer);
 
+    // Every listener above is removed here. The previous version removed none
+    // and cleared a `dataset.sidebarInit` guard instead, so a remount re-ran the
+    // whole init and stacked a second anonymous window `resize` listener on top
+    // of an unreachable first one.
     return () => {
-      track.dataset.sidebarInit = '';
+      track.removeEventListener('pointerdown', onPointerDown);
+      track.removeEventListener('pointermove', onPointerMove);
+      track.removeEventListener('pointerup', endDrag);
+      track.removeEventListener('pointercancel', endDrag);
+      resizer.removeEventListener('dblclick', onDblClick);
+      resizer.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onWindowResize);
+      clearTimeout(resizeTimer);
+      // Unmounting mid-drag otherwise strands the resizing cursor/overlay class
+      // on <body> for the rest of the page's life.
+      document.body.classList.remove('student-sidebar-is-resizing');
+      if (drag && drag.pointerId != null) {
+        try { track.releasePointerCapture(drag.pointerId); } catch (e) {}
+      }
+      drag = null;
     };
   }, []);
 

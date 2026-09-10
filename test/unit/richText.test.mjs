@@ -103,3 +103,75 @@ test('esc leaves already-safe text unchanged', () => {
   assert.equal(esc('plain text 123'), 'plain text 123');
   assert.equal(esc('a & b'), 'a &amp; b');
 });
+
+// ── Emphasis must not eat Salesforce API names (COR-03) ──────────────────────
+// This is a Salesforce training tool: Some_Field__c is the most common technical
+// token in its domain, and underscore emphasis used to shred it.
+
+test('a Salesforce API name survives verbatim', () => {
+  assert.equal(formatRichMessage('Custom_Field__c'), 'Custom_Field__c');
+});
+
+test('two API names in one sentence both survive', () => {
+  const src = 'Use Account.My_Field__c and Contact.Other_Field__c';
+  assert.equal(formatRichMessage(src), src);
+});
+
+test('a SOQL query with an API name is untouched', () => {
+  const src = 'SELECT Id, Name FROM Account WHERE Owner_Id__c = :x';
+  assert.equal(formatRichMessage(src), src);
+});
+
+test('a mid-word underscore is preserved verbatim', () => {
+  assert.equal(formatRichMessage('snake_case_name'), 'snake_case_name');
+  assert.equal(formatRichMessage('x_y'), 'x_y');
+});
+
+test('arithmetic asterisks are not read as bold', () => {
+  const src = '5 * 3 and 2 * 4 equals fifteen and eight';
+  const out = formatRichMessage(src);
+  assert.ok(!out.includes('<strong>'), out);
+  assert.equal(out, src);
+});
+
+test('bold does not cross a line break', () => {
+  const src = 'line one *not bold\nline two* still';
+  const out = formatRichMessage(src);
+  assert.ok(!out.includes('<strong>'), out);
+  assert.equal(out, src);
+});
+
+test('bold does not cross a blank line', () => {
+  const src = 'para one *open\n\npara two* close';
+  const out = formatRichMessage(src);
+  assert.ok(!out.includes('<strong>'), out);
+});
+
+test('genuine emphasis still renders after the boundary rules', () => {
+  assert.ok(formatRichMessage('an _italic_ word').includes('<em>italic</em>'));
+  assert.ok(formatRichMessage('_leading and trailing_').includes('<em>leading and trailing</em>'));
+  assert.ok(formatRichMessage('(_parenthesised_)').includes('<em>parenthesised</em>'));
+  assert.ok(formatRichMessage('an *important* point').includes('<strong>important</strong>'));
+  assert.ok(formatRichMessage('a ~struck~ word').includes('<del>struck</del>'));
+});
+
+test('**bold** works and leaves no stray asterisk', () => {
+  const out = formatRichMessage('**bold**');
+  assert.equal(out, '<strong>bold</strong>');
+  assert.ok(formatRichMessage('say **this** now').includes('<strong>this</strong>'));
+});
+
+test('emphasis markers inside inline code are left alone', () => {
+  const out = formatRichMessage('`Custom_Field__c` and `5 * 3`');
+  assert.ok(!out.includes('<em>'), out);
+  assert.ok(!out.includes('<strong>'), out);
+  assert.ok(out.includes('Custom_Field__c'), out);
+  assert.ok(out.includes('5 * 3'), out);
+});
+
+test('emphasis markers inside a fenced block are left alone', () => {
+  const out = formatRichMessage('```\nMy_Field__c = a * b;\n```');
+  assert.ok(!out.includes('<em>'), out);
+  assert.ok(!out.includes('<strong>'), out);
+  assert.ok(out.includes('My_Field__c = a * b;'), out);
+});

@@ -9,7 +9,7 @@ Live Q&A for trainings and events. Instructors run a session with a short code; 
 | Path | Role |
 |------|------|
 | `index.html` | Dev/prod **hub** at `/` with links to student and instructor (the real apps are the two HTML entries below). |
-| `student.html` / `instructor.html` | Page shells (markup + Firebase CDN + Fuse). **Run via Vite** in dev; for production, use the **`dist/`** output of `npm run build` (see below). |
+| `student.html` / `instructor.html` | Page shells. Each loads only its own module entry (`/src/{student,instructor}/main.jsx`) — no CDN script tags. **Run via Vite** in dev; for production, use the **`dist/`** output of `npm run build` (see below). |
 | `src/` | App logic split into **`config/`**, **`constants/`**, **`lib/`**, and **`student/`** / **`instructor/`** entry bundles. |
 | `vite.config.js`, `package.json` | [Vite](https://vitejs.dev/) multi-page build (`index` + `student` + `instructor`). **`firebase`** (npm): **`firebase/compat/app`** (+ Firestore + Storage) in the runtime bundle. |
 | `SETUP.md` | Firebase project, Firestore rules, hosting, and session flow. |
@@ -44,7 +44,7 @@ For a **dated history** (fixes, UI tweaks, rich text, toolbars), see **`CHANGELO
 - **Same browser:** a stable **student id** and your **last session code** are stored locally so a normal page refresh reopens the board without typing the code again (until **Leave**). That id is scoped to the browser.
 - Ask questions, **edit your own** questions while in the same browser session, **upvote** any question.
 - See session details (title, room, time, description) in the **Session** column on the right, then **Session stats** below that. At the bottom of the sidebar, **Send feedback** opens a short form.
-- Questions load in **pages** of 10 with **Load older**; the board **polls** about every 10s (your own submit or edit refreshes immediately). **Refresh** next to Search/Clear runs the same fetch operation.
+- Questions load in **pages** of 10 with **Load older**; the newest page is a **live listener**, so new questions and answers appear without a refresh (polling was removed). **Refresh** next to Search/Clear re-runs the fetch for older pages.
 - The **Format** row above the ask box (and in **Edit**) inserts Slack-style markers: bold, italic, strikethrough, inline code, code blocks, and common emojis; `https://` links still auto-link when rendered.
 - **Paste screenshots** into the ask box (students) or answer box (instructors): images are resized and compressed client-side, uploaded to **Firebase Storage**, and shown as attachments in questions and answers.
 - See **instructor answers** as they’re saved (including multiple answers per thread when instructors add them).
@@ -53,7 +53,7 @@ For a **dated history** (fixes, UI tweaks, rich text, toolbars), see **`CHANGELO
 
 ## Instructors
 
-- **Account:** display name + PIN (PIN is stored hashed in Firestore; see `SETUP.md` for limits).
+- **Account:** Google sign-in with a verified `@salesforce.com` address. The old display-name-plus-PIN account model is gone. `SETUP.md` still documents the PIN flow and is out of date on this point.
 - **Sessions:** create a session (code generated for you) with the same fields as **Session settings** (including OrgClaim and survey), then tweak anytime in the sidebar; copy the code for student sharing.
 - **Instructor Notes** (sidebar section title): optional title, message, optional named links (editor), and `https://` image URLs; **Show in student dashboard** checkbox; Slack-style formatting.
 - **OrgClaim & survey shortcuts:** **OrgClaim** link (defaults to `http://sfdc.co/OrgClaim` on save) plus **OrgClaim code** — students always see **OrgClaim**; if the code is empty, **OrgClaim Code** is hidden.
@@ -64,7 +64,7 @@ For a **dated history** (fixes, UI tweaks, rich text, toolbars), see **`CHANGELO
 
 ## Stack (today)
 
-- **Vite** bundles ES modules from `src/`; markup stays in the two HTML entry files; CSS lives under `src/styles/`. Firebase compat SDK and Fuse stay on CDNs as before.
+- **Vite** bundles ES modules from `src/`; markup stays in the two HTML entry files; CSS lives under `src/styles/`. The Firebase compat SDK and Fuse.js are **npm dependencies bundled by Vite** (`src/lib/firebaseCompat.js`), not CDN scripts — that change is what let the modular aggregate queries share one Firebase app (see the 2026-04-22 entry in `CHANGELOG.md`).
 - Firestore holds instructors, sessions, and questions; **Firebase Storage** holds question and answer image attachments. Static hosting serves the **`dist/`** folder for production.
 
 ---
@@ -74,14 +74,20 @@ For a **dated history** (fixes, UI tweaks, rich text, toolbars), see **`CHANGELO
 **Shipped in this repo**
 
 - **Pagination** (10 questions per page) + **Load older** on student and instructor.
-- Student **polling** (~10s) instead of a live listener on the full question list; instructor **live listener on the newest page** only.
+- **Live listener on the newest page** for both student and instructor. Student polling (~10s, `STUDENT_POLL_MS`) was removed and the constant no longer exists in `src/`.
 - **Answer drafts** preserved for instructors when the question list re-renders.
 - Question and session-note text: **line breaks**, **Slack-style rich markers** (`*bold*`, code fences, etc.), **linkified** `https://` URLs, **copy-to-clipboard on rendered code**, plus formatting helpers.
 - **Image paste** (student ask box and instructor answer box): screenshots resize client-side and upload to Firebase Storage; rendered as attachments in question and answer cards.
 
 **Still to build (when you’re ready)**
 
-- React (or similar) for cleaner UI state, Firebase **App Check** + instructor **Auth**, tighter rules for global URLs.
+- **App Check enforcement.** App Check is registered and the client mints
+  reCAPTCHA v3 tokens, but Firestore, Storage and Identity Toolkit are all
+  unenforced, so the backend ignores them. See `BACKLOG.md` for why this is the
+  top remaining item and why enabling it early is dangerous.
+- Tighter rules for global URLs.
+
+(React and instructor **Auth** were on this list and have both shipped.)
 
 Details for maintainers may live in a private notes file; this README stays high level.
 
@@ -97,17 +103,24 @@ This section documents what data the app collects and stores, for compliance pur
 |------|-------|-------|
 | Question text | `sessions/{code}/questions/{id}` | Entered by the student |
 | `authorName` | same document | The display name the student typed, or `"Anonymous"` if they left it blank or toggled **Post anonymously** |
-| `authorId` | same document | A random UUID generated in the student's browser on first visit — no name, email, or device info attached |
-| `voters` array | same document | List of `authorId` UUIDs — no PII |
-| Session feedback | `sessions/{code}/sessionFeedback/{id}` | Subject + message only; Firestore rules enforce exactly those 3 fields — no name or identity stored |
-| Instructor account | `instructors/{id}` | Display name + hashed PIN chosen by the instructor |
+| `authorId` | same document | A random UUID generated in the student's browser on first visit. No name, email, or device info attached |
+| `authorUid` | same document | The student's **anonymous Firebase Auth uid**, written since auth shipped (`src/student/components/AskBox.jsx:357`). Anonymous identities carry no email or profile |
+| `voters` array | same document | Voter identities, uid-based with a fallback to the legacy `authorId` UUID. No PII |
+| Session feedback | `sessions/{code}/sessionFeedback/{id}` | Subject + message only; Firestore rules enforce exactly those 3 fields. No name or identity stored |
+| `ownerEmail` | `sessions/{code}` | **The session creator's verified `@salesforce.com` email address**, lowercased (`src/instructor/components/CreateSessionModal.jsx:147`) |
+| `instructorEmails` | `sessions/{code}` | **Verified `@salesforce.com` addresses of every co-instructor who joined**, appended on join (`src/instructor/components/JoinSessionModal.jsx:141`). Both fields are what `firestore.rules` uses to authorize instructor writes |
 
 ### What is NOT stored
 
-- No email addresses, employee IDs, or Salesforce org IDs
+- No **student** email addresses, employee IDs, or Salesforce org IDs. Instructor
+  emails **are** stored: see `ownerEmail` and `instructorEmails` above
 - No IP addresses or device fingerprints
-- No authentication tokens (the app has no Firebase Auth)
+- No long-lived authentication tokens are written to Firestore. The app **does**
+  use Firebase Auth (Google sign-in for instructors, anonymous identities for
+  students); tokens live in the browser, not in the database
 - `authorEmail` field exists in question documents but is always written as an empty string `""`
+- Instructor PINs are gone. The old `instructors/{id}` hashed-PIN account model
+  has been replaced by Google sign-in (no `sha256`/`pinHash` code remains in `src/`)
 
 ### How `authorName` works
 
@@ -122,7 +135,13 @@ The `authorId` UUID cannot be linked back to a person without physical access to
 
 ### Summary
 
-The only personal data in Firestore is a self-reported, optional display name attached to questions. It is not collected for any purpose beyond showing instructors who asked what during a session.
+Two kinds of personal data reach Firestore. On the **student** side, a
+self-reported, optional display name attached to questions, collected for no
+purpose beyond showing instructors who asked what during a session. On the
+**instructor** side, verified `@salesforce.com` email addresses on the session
+document (`ownerEmail`, `instructorEmails`), which exist because the security
+rules authorize instructor writes against them. Instructor emails are corporate
+addresses of the people running the session, not attendee data.
 
 ---
 

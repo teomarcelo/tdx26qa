@@ -16,6 +16,14 @@ import useStudentDemoStore, { IS_STUDENT_DEMO } from '../demo/useStudentDemoStor
  *  - Whenever page 0 refreshes while it is the visible page, older cached pages
  *    are dropped (their cursors may be stale) — matching the prior poll logic.
  *
+ * That last point means the page cache is NOT a view of the session: it holds
+ * the visible page and, at most, whatever older pages have survived since the
+ * last page-0 refresh. Anything that needs the whole session (search, the votes
+ * sort, the Pinned/Answered/Unanswered filters) must go through
+ * useFullQuestionCorpus instead of filtering this cache, or it will silently
+ * answer from ten questions. Dropping the older pages here is what keeps the
+ * `startAfter` cursors honest, so it stays.
+ *
  * Demo mode (no `db`) is unaffected: no listener is attached and the board is
  * populated by the store, exactly as before.
  *
@@ -140,6 +148,44 @@ export function useQuestions(sessionCode, pollSkipUntilRef) {
     }
   }, [db, sessionCode]);
 
+  /**
+   * Reconcile one question after a vote, without moving the student off the page
+   * they are reading. Returns the fresh doc (or null) so a caller can patch its
+   * own cache from the same single read instead of issuing a second one.
+   *
+   * fetchFirstPage() is deliberately NOT used here: it ends in commitPage0,
+   * which calls setCurrentPage(0) and would throw a student browsing older
+   * questions back to the newest page.
+   */
+  const refreshQuestionAfterVote = useCallback(async (id) => {
+    if (IS_STUDENT_DEMO) return null;
+    if (!db || !sessionCode || !id) return null;
+    try {
+      // One document read. The vote itself is applied server-side with
+      // FieldValue.increment, so re-reading the doc is the only way to get the
+      // authoritative tally without guessing the delta locally.
+      const doc = await db
+        .collection('sessions')
+        .doc(sessionCode)
+        .collection('questions')
+        .doc(id)
+        .get();
+      if (!doc.exists) return null;
+      const fresh = { id: doc.id, ...doc.data() };
+      setQuestionPages((prev) =>
+        prev.map((p) =>
+          p && p.questions && p.questions.some((q) => q.id === id)
+            ? { ...p, questions: p.questions.map((q) => (q.id === id ? fresh : q)) }
+            : p,
+        ),
+      );
+      return fresh;
+    } catch (e) {
+      console.warn('useQuestions refreshQuestionAfterVote error:', e);
+      return null;
+    }
+  }, [db, sessionCode]);
+
   /** Navigate to previous (newer) page — cached; refresh page 0 from the listener. */
   const goPrevPage = useCallback(() => {
     const cp = currentPageRef.current;
@@ -261,6 +307,7 @@ export function useQuestions(sessionCode, pollSkipUntilRef) {
       goPrevPage,
       goToPage,
       getAllCached: () => demoQuestions.slice(),
+      refreshQuestionAfterVote,
       reset,
     };
   }
@@ -276,6 +323,7 @@ export function useQuestions(sessionCode, pollSkipUntilRef) {
     goPrevPage,
     goToPage,
     getAllCached,
+    refreshQuestionAfterVote,
     reset,
   };
 }
